@@ -36,13 +36,26 @@
   // ─── Session identity ────────────────────────────────────────────────
   const AVATARS = ['🟥','🟦','🟩','🟨','🟧','🟪','⬛','🤍'];
   const myId    = Math.random().toString(36).slice(2, 9);
-  const myAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
 
   // ─── Firebase paths ──────────────────────────────────────────────────
   const cubeRef      = ref(db, 'cube/state');
   const movesRef     = ref(db, 'cube/moves');
   const moveCountRef = ref(db, 'cube/moveCount');
   const presenceRef  = ref(db, `cube/presence/${myId}`);
+  const presenceParent = ref(db, 'cube/presence');
+
+  // ─── Claim a unique avatar ────────────────────────────────────────────
+  // Read all current presence entries, find which avatars are taken, pick a free one
+  let myAvatar = '⬜';
+  const presenceSnap = await new Promise(resolve => onValue(presenceParent, resolve, { onlyOnce: true }));
+  const takenAvatars = new Set();
+  if (presenceSnap.exists()) {
+    Object.values(presenceSnap.val()).forEach(u => takenAvatars.add(u.avatar));
+  }
+  const freeAvatars = AVATARS.filter(a => !takenAvatars.has(a));
+  myAvatar = freeAvatars.length > 0
+    ? freeAvatars[Math.floor(Math.random() * freeAvatars.length)]
+    : AVATARS[Math.floor(Math.random() * AVATARS.length)]; // fallback if >8 users
 
   // ─── Presence (online count) ─────────────────────────────────────────
   set(presenceRef, { avatar: myAvatar, joinedAt: serverTimestamp() });
@@ -51,7 +64,7 @@
   // Expose Firebase helpers to the rest of the page
   window._fb = { db, ref, set, onValue, runTransaction, serverTimestamp,
                  cubeRef, movesRef, moveCountRef, myId, myAvatar,
-                 presenceParent: ref(db, 'cube/presence'), push, remove };
+                 presenceParent, push, remove };
 </script>
 
 <style>
