@@ -399,7 +399,7 @@ function waitForFB(cb, tries = 0) {
 // ─── CUBE LOGIC ───────────────────────────────────────────────────────────────
 const COLORS   = {W:'#f0f0f0',Y:'#ffd600',G:'#00b518',B:'#1565ff',O:'#ff7200',R:'#e00000'};
 const FACES    = ['U','D','F','B','L','R'];
-const INITIAL  = {U:Array(9).fill('W'),D:Array(9).fill('Y'),F:Array(9).fill('G'),
+const INITIAL  = {U:Array(9).fill('Y'),D:Array(9).fill('W'),F:Array(9).fill('G'),
                   B:Array(9).fill('B'),L:Array(9).fill('O'),R:Array(9).fill('R')};
 
 let state = {};
