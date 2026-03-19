@@ -142,13 +142,10 @@
   .cube-scene { width:calc(var(--cube-half)*2); height:calc(var(--cube-half)*2);
     transform-style:preserve-3d;
     transform:rotateX(-26deg) rotateY(40deg);
-    animation:autoRotate 22s linear infinite;
-    transition:transform .4s ease; }
-  .cube-scene.paused { animation-play-state:paused; }
-
-  @keyframes autoRotate {
-    from{transform:rotateX(-26deg) rotateY(40deg)}
-    to  {transform:rotateX(-26deg) rotateY(400deg)} }
+    transition:transform .08s ease; }
+  .cube-scene.animating { transition:transform .4s ease; }
+  .cube-viewport { cursor:grab; }
+  .cube-viewport.dragging { cursor:grabbing; }
 
   .face { position:absolute; width:calc(var(--cube-half)*2); height:calc(var(--cube-half)*2);
     display:grid; grid-template-columns:repeat(3,var(--sticker));
@@ -255,15 +252,11 @@
   .btn-L  {background:linear-gradient(145deg,#cc5500,#7a3300);color:#fff;box-shadow:0 4px 16px rgba(204,85,0,.35)}
   .btn-Lc {background:linear-gradient(145deg,#9a4000,#4d2000);color:#ffd4a0;box-shadow:0 4px 14px rgba(204,85,0,.25)}
 
-  .action-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; width:100%; }
+  .action-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%; }
   .btn-reset    { background:linear-gradient(145deg,#1f1f3a,#12122a); color:var(--gold);
     border:1px solid rgba(212,175,55,.35); font-size:.75rem; padding:13px; }
   .btn-scramble { background:linear-gradient(145deg,#2a1f3a,#1a122a); color:#c084fc;
     border:1px solid rgba(192,132,252,.35); font-size:.75rem; padding:13px; }
-  .btn-copy     { background:linear-gradient(145deg,#1a2e1a,#0d1a0d); color:#4ade80;
-    border:1px solid rgba(74,222,128,.35); font-size:.75rem; padding:13px; cursor:pointer; }
-  .btn-copy.copied { color:#86efac; }
-
   .btn-label-pair { display:flex; flex-direction:column; align-items:center; gap:2px; }
   .btn-move  { font-size:.82rem; }
   .btn-arrow { font-size:.6rem; opacity:.7; }
@@ -371,7 +364,6 @@
     <div class="action-row">
       <button class="btn btn-reset"    onclick="resetCube()">⟳ &nbsp;RESET</button>
       <button class="btn btn-scramble" onclick="scrambleCube()">⚄ &nbsp;SCRAMBLE</button>
-      <button class="btn btn-copy"     onclick="copyLink()" id="copyBtn">🔗 &nbsp;COPY LINK</button>
     </div>
     <div class="kbd-hint">
       <kbd>U</kbd><kbd>D</kbd><kbd>F</kbd><kbd>B</kbd><kbd>R</kbd><kbd>L</kbd> + <kbd>Shift</kbd> for CCW &nbsp;·&nbsp;
@@ -636,15 +628,6 @@ waitForFB(fb => {
     showToast(`Scrambled with ${n} random moves — can everyone solve it?`);
   };
 
-  window.copyLink = function() {
-    navigator.clipboard.writeText(window.location.href).then(() => {
-      const btn = document.getElementById('copyBtn');
-      btn.textContent = '✓ Copied!';
-      btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = '🔗  COPY LINK'; btn.classList.remove('copied'); }, 2000);
-    });
-  };
-
   // ── Keyboard ────────────────────────────────────────────────────────
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
@@ -655,6 +638,67 @@ waitForFB(fb => {
     if (e.key==='Escape') resetCube();
   });
 });
+
+// ─── DRAG TO SPIN ─────────────────────────────────────────────────────────────
+(function() {
+  const viewport = document.querySelector('.cube-viewport');
+  const scene    = document.getElementById('cubeScene');
+  let rotX = -26, rotY = 40;
+  let dragging = false, lastX = 0, lastY = 0;
+  let velX = 0, velY = 0, rafId = null;
+
+  function applyTransform(transition = false) {
+    scene.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+  }
+
+  function inertia() {
+    velX *= 0.93; velY *= 0.93;
+    rotX += velX; rotY += velY;
+    // Clamp X so cube doesn't flip upside-down
+    rotX = Math.max(-80, Math.min(80, rotX));
+    applyTransform();
+    if (Math.abs(velX) > 0.1 || Math.abs(velY) > 0.1) {
+      rafId = requestAnimationFrame(inertia);
+    }
+  }
+
+  function onStart(x, y) {
+    dragging = true;
+    lastX = x; lastY = y;
+    velX = 0; velY = 0;
+    cancelAnimationFrame(rafId);
+    viewport.classList.add('dragging');
+    scene.style.transition = 'none';
+  }
+  function onMove(x, y) {
+    if (!dragging) return;
+    const dx = x - lastX, dy = y - lastY;
+    velY = dx * 0.4;
+    velX = -dy * 0.4;
+    rotY += velY; rotX += velX;
+    rotX = Math.max(-80, Math.min(80, rotX));
+    lastX = x; lastY = y;
+    applyTransform();
+  }
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    viewport.classList.remove('dragging');
+    rafId = requestAnimationFrame(inertia);
+  }
+
+  // Mouse
+  viewport.addEventListener('mousedown',  e => { e.preventDefault(); onStart(e.clientX, e.clientY); });
+  window .addEventListener('mousemove',   e => onMove(e.clientX, e.clientY));
+  window .addEventListener('mouseup',     onEnd);
+
+  // Touch
+  viewport.addEventListener('touchstart', e => { e.preventDefault(); onStart(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+  window .addEventListener('touchmove',   e => onMove(e.touches[0].clientX, e.touches[0].clientY), {passive:true});
+  window .addEventListener('touchend',    onEnd);
+
+  applyTransform();
+})();
 </script>
 </body>
 </html>
