@@ -410,10 +410,12 @@ function clone(s) { const c={}; for(const k in s) c[k]=[...s[k]]; return c; }
 function rotateCW(f)  { return [f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]]; }
 
 const MOVES = {
-  'U':  s=>{s.U=rotateCW(s.U);const[t0,t1,t2]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[t0,t1,t2]},
-  "U'": s=>{MOVES.U(s);MOVES.U(s);MOVES.U(s)},
-  'D':  s=>{s.D=rotateCW(s.D);const[t0,t1,t2]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[s.B[2],s.B[1],s.B[0]];[s.B[2],s.B[1],s.B[0]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[t0,t1,t2]},
-  "D'": s=>{MOVES.D(s);MOVES.D(s);MOVES.D(s)},
+  'U':  s=>{MOVES["U_cw"](s);MOVES["U_cw"](s);MOVES["U_cw"](s)},
+  "U'": s=>{MOVES["U_cw"](s)},
+  "U_cw": s=>{s.U=rotateCW(s.U);const[t0,t1,t2]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[t0,t1,t2]},
+  'D':  s=>{MOVES["D_cw"](s);MOVES["D_cw"](s);MOVES["D_cw"](s)},
+  "D'": s=>{MOVES["D_cw"](s)},
+  "D_cw": s=>{s.D=rotateCW(s.D);const[t0,t1,t2]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[s.B[2],s.B[1],s.B[0]];[s.B[2],s.B[1],s.B[0]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[t0,t1,t2]},
   'F':  s=>{s.F=rotateCW(s.F);const[t0,t1,t2]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[6],s.R[3],s.R[0]];[s.R[6],s.R[3],s.R[0]]=[t2,t1,t0]},
   "F'": s=>{MOVES.F(s);MOVES.F(s);MOVES.F(s)},
   'B':  s=>{s.B=rotateCW(s.B);const[t0,t1,t2]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[0],s.L[3],s.L[6]];[s.L[0],s.L[3],s.L[6]]=[t2,t1,t0]},
