@@ -547,16 +547,32 @@ waitForFB(fb => {
 
   // ── Recent moves log listener ──────────────────────────────────────
   const recentMovesRef = ref(db, 'cube/recentMoves');
+  let knownKeys = new Set();
   let logInitialized = false;
+
   onValue(recentMovesRef, snap => {
     if (!snap.exists()) return;
     const entries = snap.val();
+
     if (!logInitialized) {
-      // On first load, show last 10 moves
-      const all = Object.values(entries).sort((a,b)=>a.t-b.t).slice(-10);
+      // First load: show last 10 moves in order, oldest first so newest ends up on top
+      const all = Object.entries(entries).sort((a,b) => a[1].t - b[1].t).slice(-10);
       document.getElementById('moveLog').innerHTML = '';
-      all.reverse().forEach(e => addLogEntry(e.m, e.av, e.id === myId));
+      all.reverse().forEach(([k, e]) => {
+        knownKeys.add(k);
+        addLogEntry(e.m, e.av, e.id === myId);
+      });
       logInitialized = true;
+    } else {
+      // Subsequent updates: only add entries we haven't seen yet
+      const newEntries = Object.entries(entries)
+        .filter(([k]) => !knownKeys.has(k))
+        .sort((a, b) => a[1].t - b[1].t); // oldest first so newest lands on top
+      newEntries.forEach(([k, e]) => {
+        knownKeys.add(k);
+        // Don't double-log our own moves (already added in doMove)
+        if (e.id !== myId) addLogEntry(e.m, e.av, false);
+      });
     }
   });
 
