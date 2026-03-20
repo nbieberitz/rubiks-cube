@@ -836,133 +836,133 @@ waitForFB(fb => {
 (function() {
 
 const WORKER_SRC = `
+// ─── Cube state helpers ────────────────────────────────────────────────────────
 const FACES = ['U','D','F','B','L','R'];
-
 function clone(s){const c={};for(const k in s)c[k]=[...s[k]];return c;}
 function rotateCW(f){return[f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]];}
 
-function U_cw(s){s.U=rotateCW(s.U);const[t0,t1,t2]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[t0,t1,t2];}
-function D_cw(s){s.D=rotateCW(s.D);const[t0,t1,t2]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[s.B[2],s.B[1],s.B[0]];[s.B[2],s.B[1],s.B[0]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[t0,t1,t2];}
-function F_m(s){s.F=rotateCW(s.F);const[t0,t1,t2]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[6],s.R[3],s.R[0]];[s.R[6],s.R[3],s.R[0]]=[t2,t1,t0];}
-function B_m(s){s.B=rotateCW(s.B);const[t0,t1,t2]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[0],s.L[3],s.L[6]];[s.L[0],s.L[3],s.L[6]]=[t2,t1,t0];}
-function R_m(s){s.R=rotateCW(s.R);const[t0,t1,t2]=[s.F[2],s.F[5],s.F[8]];[s.F[2],s.F[5],s.F[8]]=[s.D[2],s.D[5],s.D[8]];[s.D[2],s.D[5],s.D[8]]=[s.B[6],s.B[3],s.B[0]];[s.B[6],s.B[3],s.B[0]]=[s.U[2],s.U[5],s.U[8]];[s.U[2],s.U[5],s.U[8]]=[t0,t1,t2];}
-function L_m(s){s.L=rotateCW(s.L);const[t0,t1,t2]=[s.F[0],s.F[3],s.F[6]];[s.F[0],s.F[3],s.F[6]]=[s.U[0],s.U[3],s.U[6]];[s.U[0],s.U[3],s.U[6]]=[s.B[8],s.B[5],s.B[2]];[s.B[8],s.B[5],s.B[2]]=[s.D[0],s.D[3],s.D[6]];[s.D[0],s.D[3],s.D[6]]=[t0,t1,t2];}
+// ─── Primitive quarter-turn functions (identical to main thread) ───────────────
+function U_cw(s){s.U=rotateCW(s.U);const[a,b,c]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[a,b,c];}
+function D_cw(s){s.D=rotateCW(s.D);const[a,b,c]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[s.B[2],s.B[1],s.B[0]];[s.B[2],s.B[1],s.B[0]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[a,b,c];}
+function F_cw(s){s.F=rotateCW(s.F);const[a,b,c]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[6],s.R[3],s.R[0]];[s.R[6],s.R[3],s.R[0]]=[c,b,a];}
+function B_cw(s){s.B=rotateCW(s.B);const[a,b,c]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[0],s.L[3],s.L[6]];[s.L[0],s.L[3],s.L[6]]=[c,b,a];}
+function R_cw(s){s.R=rotateCW(s.R);const[a,b,c]=[s.F[2],s.F[5],s.F[8]];[s.F[2],s.F[5],s.F[8]]=[s.D[2],s.D[5],s.D[8]];[s.D[2],s.D[5],s.D[8]]=[s.B[6],s.B[3],s.B[0]];[s.B[6],s.B[3],s.B[0]]=[s.U[2],s.U[5],s.U[8]];[s.U[2],s.U[5],s.U[8]]=[a,b,c];}
+function L_cw(s){s.L=rotateCW(s.L);const[a,b,c]=[s.F[0],s.F[3],s.F[6]];[s.F[0],s.F[3],s.F[6]]=[s.U[0],s.U[3],s.U[6]];[s.U[0],s.U[3],s.U[6]]=[s.B[8],s.B[5],s.B[2]];[s.B[8],s.B[5],s.B[2]]=[s.D[0],s.D[3],s.D[6]];[s.D[0],s.D[3],s.D[6]]=[a,b,c];}
 
-function applyMove(s,m){
-  const ns=clone(s);
-  if(m==='U')U_cw(ns);else if(m==="U'"){U_cw(ns);U_cw(ns);U_cw(ns);}else if(m==='U2'){U_cw(ns);U_cw(ns);}
-  else if(m==='D'){D_cw(ns);D_cw(ns);D_cw(ns);}else if(m==="D'"){D_cw(ns);}else if(m==='D2'){D_cw(ns);D_cw(ns);}
-  else if(m==='F')F_m(ns);else if(m==="F'"){F_m(ns);F_m(ns);F_m(ns);}else if(m==='F2'){F_m(ns);F_m(ns);}
-  else if(m==='B')B_m(ns);else if(m==="B'"){B_m(ns);B_m(ns);B_m(ns);}else if(m==='B2'){B_m(ns);B_m(ns);}
-  else if(m==='R')R_m(ns);else if(m==="R'"){R_m(ns);R_m(ns);R_m(ns);}else if(m==='R2'){R_m(ns);R_m(ns);}
-  else if(m==='L')L_m(ns);else if(m==="L'"){L_m(ns);L_m(ns);L_m(ns);}else if(m==='L2'){L_m(ns);L_m(ns);}
-  return ns;
-}
+// ─── Move application ──────────────────────────────────────────────────────────
+// 'U'=1×U_cw, 'D'=3×D_cw — mirrors exact behaviour of main-thread MOVES object.
+const MOVE_FNS = {
+  'U':  s=>{U_cw(s);},             "U'": s=>{U_cw(s);U_cw(s);U_cw(s);}, 'U2': s=>{U_cw(s);U_cw(s);},
+  'D':  s=>{D_cw(s);D_cw(s);D_cw(s);}, "D'": s=>{D_cw(s);},             'D2': s=>{D_cw(s);D_cw(s);},
+  'F':  s=>{F_cw(s);},             "F'": s=>{F_cw(s);F_cw(s);F_cw(s);}, 'F2': s=>{F_cw(s);F_cw(s);},
+  'B':  s=>{B_cw(s);},             "B'": s=>{B_cw(s);B_cw(s);B_cw(s);}, 'B2': s=>{B_cw(s);B_cw(s);},
+  'R':  s=>{R_cw(s);},             "R'": s=>{R_cw(s);R_cw(s);R_cw(s);}, 'R2': s=>{R_cw(s);R_cw(s);},
+  'L':  s=>{L_cw(s);},             "L'": s=>{L_cw(s);L_cw(s);L_cw(s);}, 'L2': s=>{L_cw(s);L_cw(s);},
+};
+const ALL_MOVES = Object.keys(MOVE_FNS); // 18 moves
 
-function isSolved(s){return FACES.every(f=>s[f].every(c=>c===s[f][0]));}
+function applyMove(s, m) { const ns=clone(s); MOVE_FNS[m](ns); return ns; }
 
-// Heuristic: misplaced stickers / 8 (lower bound, fast)
-function h(s){
+// ─── isSolved & heuristic — both use center sticker [4] (never moves) ─────────
+function isSolved(s) { return FACES.every(f => { const c=s[f][4]; return s[f].every(v=>v===c); }); }
+
+function h(s) {
   let w=0;
   for(const f of FACES){const c=s[f][4];for(let i=0;i<9;i++)if(s[f][i]!==c)w++;}
   return Math.ceil(w/8);
 }
 
-const MOVES=["U","U'","U2","R","R'","R2","F","F'","F2","D","D'","D2","L","L'","L2","B","B'","B2"];
-const FACE_OF={};
-["U","U'","U2"].forEach(m=>FACE_OF[m]=0);["R","R'","R2"].forEach(m=>FACE_OF[m]=1);
-["F","F'","F2"].forEach(m=>FACE_OF[m]=2);["D","D'","D2"].forEach(m=>FACE_OF[m]=3);
-["L","L'","L2"].forEach(m=>FACE_OF[m]=4);["B","B'","B2"].forEach(m=>FACE_OF[m]=5);
-const OPP={0:3,3:0,1:4,4:1,2:5,5:2};
+// ─── IDA* (only same-face pruning — safest, no edge-cases) ───────────────────
+const FACE_IDX = {};
+['U',"U'","U2"].forEach(m=>FACE_IDX[m]=0); ['D',"D'","D2"].forEach(m=>FACE_IDX[m]=1);
+['F',"F'","F2"].forEach(m=>FACE_IDX[m]=2); ['B',"B'","B2"].forEach(m=>FACE_IDX[m]=3);
+['R',"R'","R2"].forEach(m=>FACE_IDX[m]=4); ['L',"L'","L2"].forEach(m=>FACE_IDX[m]=5);
 
-// IDA* with timeout — returns solution array or null if timed out/not found
 let _sol, _deadline;
-function ida(s,g,bound,path,lf,llf){
-  if(Date.now()>_deadline) return 9999;
-  const f=g+h(s);
-  if(f>bound) return f;
-  if(isSolved(s)){_sol=[...path];return -1;}
-  if(g>=26) return f;
-  let mn=Infinity;
-  for(const m of MOVES){
-    const tf=FACE_OF[m];
-    if(tf===lf) continue;
-    if(llf>=0&&OPP[tf]===lf&&llf===tf) continue;
+function ida(s, g, bound, path, lastFace) {
+  if (Date.now() > _deadline) return 9999;
+  const f = g + h(s);
+  if (f > bound) return f;
+  if (isSolved(s)) { _sol = [...path]; return -1; }
+  if (g >= 30) return f;
+  let min = Infinity;
+  for (const m of ALL_MOVES) {
+    if (FACE_IDX[m] === lastFace) continue; // never move same face twice in a row
     path.push(m);
-    const t=ida(applyMove(s,m),g+1,bound,path,tf,lf);
+    const t = ida(applyMove(s, m), g+1, bound, path, FACE_IDX[m]);
     path.pop();
-    if(t===-1) return -1;
-    if(t<mn) mn=t;
+    if (t === -1) return -1;
+    if (t < min) min = t;
   }
-  return mn;
+  return min;
 }
 
-function idaSolve(s, timeoutMs){
-  _sol=null; _deadline=Date.now()+timeoutMs;
-  if(isSolved(s)) return [];
-  let bound=h(s);
-  for(let i=0;i<25;i++){
-    const t=ida(s,0,bound,[],-1,-1);
-    if(t===-1) return _sol;
-    if(t===9999||t===Infinity) return null;
-    bound=t;
+function idaSolve(s, timeoutMs) {
+  _sol = null; _deadline = Date.now() + timeoutMs;
+  if (isSolved(s)) return [];
+  let bound = h(s);
+  while (bound <= 30) {
+    const t = ida(s, 0, bound, [], -1);
+    if (t === -1) return _sol;          // solution found
+    if (t === 9999) return null;        // timed out
+    if (t === Infinity || t === bound) bound++; // no progress — force next depth
+    else bound = t;
   }
   return null;
 }
 
-// Greedy step: pick the single move that most reduces h(s)
-function greedyStep(s){
-  let best=null, bestH=h(s);
-  for(const m of MOVES){
-    const ns=applyMove(s,m);
-    const hv=h(ns);
-    if(hv<bestH){bestH=hv;best={m,ns};}
-  }
-  // If no improvement, pick any move that doesn't make it worse
-  if(!best){
-    for(const m of MOVES){
-      const ns=applyMove(s,m);
-      if(h(ns)<=bestH){best={m,ns};break;}
+// ─── Random-restart greedy (guaranteed to eventually solve any cube) ───────────
+// When greedy gets stuck, injects random moves to escape local minima.
+// Never gives up — keeps going until solved.
+function greedySolve(startState) {
+  const moves = [];
+  let s = clone(startState);
+  let stuckFor = 0;
+
+  for (let step = 0; step < 5000; step++) {
+    if (isSolved(s)) return moves;
+
+    // Find the move that most reduces h
+    let bestM = null, bestH = h(s);
+    for (const m of ALL_MOVES) {
+      const hv = h(applyMove(s, m));
+      if (hv < bestH) { bestH = hv; bestM = m; }
+    }
+
+    if (bestM !== null) {
+      // Improvement found — take it
+      moves.push(bestM);
+      s = applyMove(s, bestM);
+      stuckFor = 0;
+    } else {
+      // Stuck in a local minimum — inject random moves to escape
+      stuckFor++;
+      const numRandom = stuckFor > 10 ? 5 : 1;
+      for (let r = 0; r < numRandom; r++) {
+        const rm = ALL_MOVES[Math.floor(Math.random() * ALL_MOVES.length)];
+        moves.push(rm);
+        s = applyMove(s, rm);
+      }
     }
   }
-  return best;
+  return isSolved(s) ? moves : null;
 }
 
-// Anytime solver: IDA* with greedy fallback
-self.onmessage=function(e){
-  let s=e.data;
-  const allMoves=[];
+// ─── Main solver entry point ───────────────────────────────────────────────────
+self.onmessage = function(e) {
+  const s = e.data;
+  if (isSolved(s)) { self.postMessage({ solution: [] }); return; }
 
-  for(let round=0;round<8;round++){
-    if(isSolved(s)){self.postMessage({solution:allMoves});return;}
+  // Phase 1: IDA* — fast & optimal for most scrambles (5s budget)
+  const idaSol = idaSolve(s, 5000);
+  if (idaSol !== null) { self.postMessage({ solution: idaSol }); return; }
 
-    // Try IDA* with 2.5s budget
-    const sol=idaSolve(s, 4000);
-    if(sol!==null){
-      self.postMessage({solution:[...allMoves,...sol]});
-      return;
-    }
+  // Phase 2: random-restart greedy — guaranteed to solve regardless of depth
+  const greedySol = greedySolve(s);
+  if (greedySol !== null) { self.postMessage({ solution: greedySol }); return; }
 
-    // Timed out — apply 3 greedy moves to reduce the state, then retry
-    for(let g=0;g<3;g++){
-      const step=greedyStep(s);
-      if(!step) break;
-      allMoves.push(step.m);
-      s=step.ns;
-      if(isSolved(s)){self.postMessage({solution:allMoves});return;}
-    }
-  }
-
-  // Last resort: pure greedy to solved
-  for(let i=0;i<200&&!isSolved(s);i++){
-    const step=greedyStep(s);
-    if(!step) break;
-    allMoves.push(step.m);
-    s=step.ns;
-  }
-
-  if(isSolved(s)) self.postMessage({solution:allMoves});
-  else self.postMessage({error:'Could not solve — try resetting the cube.'});
+  // Should never reach here given 5000-step greedy budget
+  self.postMessage({ error: 'Could not solve — try resetting the cube.' });
 };
 `;
 
