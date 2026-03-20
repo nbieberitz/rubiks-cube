@@ -691,8 +691,10 @@ waitForFB(fb => {
     const scene = document.getElementById('cubeScene');
     scene.classList.add('paused');
 
-    // Apply move locally first for instant feedback
+    // Apply move and render immediately — don't wait for Firebase round-trip
+    const prevState = clone(state);
     MOVES[moveName](state);
+    renderAll(prevState);
 
     // Push to Firebase
     const newState = clone(state);
@@ -880,7 +882,7 @@ function ida(s,g,bound,path,lf,llf){
   const f=g+h(s);
   if(f>bound) return f;
   if(isSolved(s)){_sol=[...path];return -1;}
-  if(g>=20) return f;
+  if(g>=26) return f;
   let mn=Infinity;
   for(const m of MOVES){
     const tf=FACE_OF[m];
@@ -935,7 +937,7 @@ self.onmessage=function(e){
     if(isSolved(s)){self.postMessage({solution:allMoves});return;}
 
     // Try IDA* with 2.5s budget
-    const sol=idaSolve(s, 2500);
+    const sol=idaSolve(s, 4000);
     if(sol!==null){
       self.postMessage({solution:[...allMoves,...sol]});
       return;
@@ -952,7 +954,7 @@ self.onmessage=function(e){
   }
 
   // Last resort: pure greedy to solved
-  for(let i=0;i<60&&!isSolved(s);i++){
+  for(let i=0;i<200&&!isSolved(s);i++){
     const step=greedyStep(s);
     if(!step) break;
     allMoves.push(step.m);
