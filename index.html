@@ -35,7 +35,13 @@
 
   // ─── Session identity ────────────────────────────────────────────────
   const AVATARS = ['🟥','🟦','🟩','🟨','🟧','🟪','⬛','🤍'];
-  const myId    = Math.random().toString(36).slice(2, 9);
+  // Reuse the same ID for this tab across refreshes so the presence entry is
+  // overwritten rather than duplicated during the onDisconnect grace period.
+  let myId = sessionStorage.getItem('rubik_session_id');
+  if (!myId) {
+    myId = Math.random().toString(36).slice(2, 9);
+    sessionStorage.setItem('rubik_session_id', myId);
+  }
 
   // ─── Firebase paths ──────────────────────────────────────────────────
   const cubeRef      = ref(db, 'cube/state');
