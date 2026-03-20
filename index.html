@@ -510,21 +510,17 @@ function renderAll(oldState) {
   document.getElementById('solvedBadge').classList.toggle('show', isSolved());
 }
 
-// L face is mirror-imaged by rotateY(-90deg): reverse each row → [2,1,0,5,4,3,8,7,6]
-// B face is mirror-imaged by rotateY(180deg) AND stored with row 6-8 at visual top,
-// so it needs a full 180° rotation remap → [8,7,6,5,4,3,2,1,0]
-const MIRROR_REMAP = [2,1,0,5,4,3,8,7,6]; // L only
-const B_REMAP      = [8,7,6,5,4,3,2,1,0]; // B: horizontal flip + vertical flip
+// B: rotateY(180deg) — full 180° remap needed (left-right + top-bottom flip)
+// L: rotateY(-90deg) — same full 180° remap needed (data stored in vertically-flipped convention)
+const BACK_LEFT_REMAP = [8,7,6,5,4,3,2,1,0];
 function faceColors(name) {
   const raw = state[name];
-  if (name === 'B') return B_REMAP.map(i => raw[i]);
-  if (name === 'L') return MIRROR_REMAP.map(i => raw[i]);
+  if (name === 'B' || name === 'L') return BACK_LEFT_REMAP.map(i => raw[i]);
   return raw;
 }
 function facePrevColors(name, prev) {
   if (!prev) return null;
-  if (name === 'B') return B_REMAP.map(i => prev[i]);
-  if (name === 'L') return MIRROR_REMAP.map(i => prev[i]);
+  if (name === 'B' || name === 'L') return BACK_LEFT_REMAP.map(i => prev[i]);
   return prev;
 }
 
