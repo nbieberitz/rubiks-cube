@@ -6,20 +6,11 @@
 <title>Rubik's Cube — Live Multiplayer</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
 
-<!-- ─── PASTE YOUR FIREBASE CONFIG HERE ──────────────────────────────────────
-     1. Go to https://console.firebase.google.com
-     2. New project → Add web app
-     3. Copy the firebaseConfig object below and replace the placeholder
-     4. Go to Realtime Database → Create database → Start in test mode
-─────────────────────────────────────────────────────────────────────────── -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, set, onValue, runTransaction, serverTimestamp, onDisconnect, push, remove }
+  import { getDatabase, ref, set, onValue, serverTimestamp, onDisconnect }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-  // ┌─────────────────────────────────────────────────────────────────────┐
-  // │  REPLACE THIS WITH YOUR OWN FIREBASE CONFIG                         │
-  // └─────────────────────────────────────────────────────────────────────┘
   const firebaseConfig = {
     apiKey:            "AIzaSyCtcmV8TJzXlDywfMX6hSFnlaTM5QrLdsU",
     authDomain:        "rubik-s-cube-c7d48.firebaseapp.com",
@@ -33,344 +24,239 @@
   const app = initializeApp(firebaseConfig);
   const db  = getDatabase(app);
 
-  // ─── Session identity ────────────────────────────────────────────────
   const AVATARS = ['🟥','🟦','🟩','🟨','🟧','🟪','⬛','🤍'];
-  // Reuse the same ID for this tab across refreshes so the presence entry is
-  // overwritten rather than duplicated during the onDisconnect grace period.
-  let myId = sessionStorage.getItem('rubik_session_id');
-  if (!myId) {
-    myId = Math.random().toString(36).slice(2, 9);
-    sessionStorage.setItem('rubik_session_id', myId);
-  }
+  let myId = sessionStorage.getItem('rubik_id') || Math.random().toString(36).slice(2,9);
+  sessionStorage.setItem('rubik_id', myId);
 
-  // ─── Firebase paths ──────────────────────────────────────────────────
-  const cubeRef      = ref(db, 'cube/state');
-  const movesRef     = ref(db, 'cube/moves');
-  const moveCountRef = ref(db, 'cube/moveCount');
-  const presenceRef  = ref(db, `cube/presence/${myId}`);
-  const presenceParent = ref(db, 'cube/presence');
+  const cubeRef     = ref(db, 'cube/state');
+  const moveCountRef= ref(db, 'cube/moveCount');
+  const presenceRef = ref(db, `cube/presence/${myId}`);
+  const presenceAll = ref(db, 'cube/presence');
+  const recentRef   = ref(db, 'cube/recentMoves');
 
-  // ─── Claim a unique avatar ────────────────────────────────────────────
-  // Read all current presence entries, find which avatars are taken, pick a free one
   let myAvatar = '⬜';
-  const presenceSnap = await new Promise(resolve => onValue(presenceParent, resolve, { onlyOnce: true }));
-  const takenAvatars = new Set();
-  if (presenceSnap.exists()) {
-    Object.values(presenceSnap.val()).forEach(u => takenAvatars.add(u.avatar));
-  }
-  const freeAvatars = AVATARS.filter(a => !takenAvatars.has(a));
-  myAvatar = freeAvatars.length > 0
-    ? freeAvatars[Math.floor(Math.random() * freeAvatars.length)]
-    : AVATARS[Math.floor(Math.random() * AVATARS.length)]; // fallback if >8 users
+  const snap0 = await new Promise(r => onValue(presenceAll, r, {onlyOnce:true}));
+  const taken = new Set(snap0.exists() ? Object.values(snap0.val()).map(u=>u.avatar) : []);
+  const free  = AVATARS.filter(a=>!taken.has(a));
+  myAvatar = free.length ? free[Math.floor(Math.random()*free.length)]
+                         : AVATARS[Math.floor(Math.random()*AVATARS.length)];
 
-  // ─── Presence (online count) ─────────────────────────────────────────
-  set(presenceRef, { avatar: myAvatar, joinedAt: serverTimestamp() });
+  set(presenceRef, {avatar:myAvatar, t:serverTimestamp()});
   onDisconnect(presenceRef).remove();
 
-  // Expose Firebase helpers to the rest of the page
-  window._fb = { db, ref, set, onValue, runTransaction, serverTimestamp,
-                 cubeRef, movesRef, moveCountRef, myId, myAvatar,
-                 presenceParent, push, remove };
+  window._fb = {db,ref,set,onValue,cubeRef,moveCountRef,presenceAll,recentRef,myId,myAvatar};
 </script>
 
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
-  :root {
-    --bg:    #07070f;
-    --panel: #0e0e1c;
-    --border:#1e1e35;
-    --glow:  #4f6fff;
-    --gold:  #d4af37;
-    --text:  #c8cee8;
-    --muted: #4a4e72;
-    --W: #f0f0f0; --Y: #ffd600; --G: #00b518;
-    --B: #1565ff; --O: #ff7200; --R: #e00000;
-    --cube-half: 105px;
-    --sticker: 64px;
-    --gap: 4px;
-  }
+:root{
+  --bg:#07070f; --panel:#0e0e1c; --border:#1e1e35;
+  --glow:#4f6fff; --gold:#d4af37; --text:#c8cee8; --muted:#4a4e72;
+  --half:105px; --cell:64px; --gap:4px;
+}
 
-  html, body { height:100%; background:var(--bg); color:var(--text);
-    font-family:'JetBrains Mono',monospace; overflow-x:hidden; }
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font-family:'JetBrains Mono',monospace;overflow-x:hidden}
 
-  .stars { position:fixed; inset:0; pointer-events:none; z-index:0;
-    background:
-      radial-gradient(1px 1px at 10% 20%,rgba(255,255,255,.6) 0%,transparent 100%),
-      radial-gradient(1px 1px at 30% 70%,rgba(255,255,255,.5) 0%,transparent 100%),
-      radial-gradient(1px 1px at 55% 15%,rgba(255,255,255,.7) 0%,transparent 100%),
-      radial-gradient(1px 1px at 75% 45%,rgba(255,255,255,.4) 0%,transparent 100%),
-      radial-gradient(1px 1px at 90% 80%,rgba(255,255,255,.6) 0%,transparent 100%),
-      radial-gradient(1px 1px at 65% 60%,rgba(255,255,255,.5) 0%,transparent 100%),
-      radial-gradient(1px 1px at 42% 38%,rgba(255,255,255,.4) 0%,transparent 100%),
-      radial-gradient(2px 2px at 85% 12%,rgba(255,255,255,.3) 0%,transparent 100%),
-      radial-gradient(1px 1px at 50% 85%,rgba(255,255,255,.5) 0%,transparent 100%); }
+.stars{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(1px 1px at 10% 20%,rgba(255,255,255,.6) 0%,transparent 100%),
+    radial-gradient(1px 1px at 30% 70%,rgba(255,255,255,.5) 0%,transparent 100%),
+    radial-gradient(1px 1px at 55% 15%,rgba(255,255,255,.7) 0%,transparent 100%),
+    radial-gradient(1px 1px at 75% 45%,rgba(255,255,255,.4) 0%,transparent 100%),
+    radial-gradient(1px 1px at 90% 80%,rgba(255,255,255,.6) 0%,transparent 100%),
+    radial-gradient(1px 1px at 42% 38%,rgba(255,255,255,.4) 0%,transparent 100%),
+    radial-gradient(1px 1px at 65% 60%,rgba(255,255,255,.5) 0%,transparent 100%)}
 
-  .app { position:relative; z-index:1; min-height:100vh;
-    display:flex; flex-direction:column; align-items:center;
-    padding:24px 20px 40px; gap:24px; }
+.app{position:relative;z-index:1;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;padding:24px 20px 40px;gap:24px}
 
-  /* ─── HEADER ──────────────────────────────────────────────────── */
-  .header { width:100%; max-width:900px; display:flex; align-items:center;
-    justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.header{width:100%;max-width:900px;display:flex;align-items:center;
+  justify-content:space-between;flex-wrap:wrap;gap:12px}
+.title-block h1{font-family:'Orbitron',sans-serif;
+  font-size:clamp(1.2rem,3.5vw,2rem);font-weight:900;letter-spacing:.14em;
+  color:#fff;text-shadow:0 0 30px rgba(79,111,255,.8)}
+.title-block h1 span{color:var(--gold)}
+.subtitle{font-size:.65rem;letter-spacing:.2em;color:var(--muted);margin-top:4px}
+.status-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.live-dot{display:flex;align-items:center;gap:6px;padding:6px 14px;
+  background:rgba(0,181,24,.08);border:1px solid rgba(0,181,24,.3);
+  border-radius:20px;font-size:.65rem;color:#00e528}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:#00e528;
+  animation:pulseDot 1.4s ease infinite}
+@keyframes pulseDot{0%,100%{box-shadow:0 0 0 0 rgba(0,229,40,.5)}50%{box-shadow:0 0 0 5px rgba(0,229,40,0)}}
+.online-count{display:flex;align-items:center;gap:6px;padding:6px 14px;
+  background:rgba(79,111,255,.08);border:1px solid rgba(79,111,255,.3);
+  border-radius:20px;font-size:.65rem;color:#8aabff}
+.my-badge{padding:5px 12px;background:rgba(212,175,55,.08);
+  border:1px solid rgba(212,175,55,.3);border-radius:20px;font-size:.7rem;color:var(--gold)}
 
-  .title-block h1 { font-family:'Orbitron',sans-serif;
-    font-size:clamp(1.2rem,3.5vw,2rem); font-weight:900; letter-spacing:.14em;
-    color:#fff; text-shadow:0 0 30px rgba(79,111,255,.8); }
-  .title-block h1 span { color:var(--gold); }
-  .subtitle { font-size:.65rem; letter-spacing:.2em; color:var(--muted); margin-top:4px; }
+.overlay{position:fixed;inset:0;z-index:100;background:rgba(7,7,15,.92);
+  backdrop-filter:blur(8px);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:20px;transition:opacity .4s}
+.overlay.hidden{opacity:0;pointer-events:none}
+.overlay-icon{font-size:3rem;animation:spin 2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay-text{font-family:'Orbitron',sans-serif;font-size:1rem;color:var(--glow);letter-spacing:.15em}
+.overlay-sub{font-size:.7rem;color:var(--muted);max-width:320px;text-align:center;line-height:1.7}
 
-  /* ─── LIVE STATUS BAR ─────────────────────────────────────────── */
-  .status-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+.stage{display:flex;gap:40px;align-items:center;flex-wrap:wrap;justify-content:center}
 
-  .live-dot { display:flex; align-items:center; gap:6px; padding:6px 14px;
-    background:rgba(0,181,24,.08); border:1px solid rgba(0,181,24,.3);
-    border-radius:20px; font-size:.65rem; letter-spacing:.1em; color:#00e528; }
-  .pulse-dot { width:7px; height:7px; border-radius:50%; background:#00e528;
-    animation:pulseDot 1.4s ease infinite; }
-  @keyframes pulseDot { 0%,100%{box-shadow:0 0 0 0 rgba(0,229,40,.5)}
-    50%{box-shadow:0 0 0 5px rgba(0,229,40,0)} }
+/* ── 3D CUBE ──────────────────────────────────────────────────────────────── */
+.cube-viewport{width:300px;height:300px;perspective:800px;
+  display:flex;align-items:center;justify-content:center;cursor:grab}
+.cube-viewport.dragging{cursor:grabbing}
 
-  .online-count { display:flex; align-items:center; gap:6px; padding:6px 14px;
-    background:rgba(79,111,255,.08); border:1px solid rgba(79,111,255,.3);
-    border-radius:20px; font-size:.65rem; letter-spacing:.1em; color:#8aabff; }
+.cube-scene{
+  width:calc(var(--half)*2);
+  height:calc(var(--half)*2);
+  transform-style:preserve-3d;
+  transform:rotateX(-26deg) rotateY(40deg);
+  transition:transform .08s ease;
+}
 
-  .my-badge { padding:5px 12px;
-    background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.3);
-    border-radius:20px; font-size:.7rem; color:var(--gold); }
+/* face-B has an inner .face-grid child with scaleX(-1) to cancel rotateY(180deg) mirror. */
+.face{
+  position:absolute;
+  width:calc(var(--half)*2);
+  height:calc(var(--half)*2);
+  display:grid;
+  grid-template-columns:repeat(3,var(--cell));
+  grid-template-rows:repeat(3,var(--cell));
+  gap:var(--gap);
+  padding:var(--gap);
+  background:#111;
+  border:2px solid rgba(255,255,255,.08);
+  backface-visibility:visible;
+  -webkit-backface-visibility:visible;
+}
+.face-F{transform:translateZ(var(--half))}
+.face-B{transform:rotateY(180deg) translateZ(var(--half)) scaleX(-1) scaleY(-1);}
+.face-R{transform:rotateY( 90deg) translateZ(var(--half))}
+.face-L{transform:rotateY(-90deg) translateZ(var(--half))}
+.face-U{transform:rotateX( 90deg) translateZ(var(--half))}
+.face-D{transform:rotateX(-90deg) translateZ(var(--half))}
 
-  /* ─── CONNECTION OVERLAY ──────────────────────────────────────── */
-  .overlay { position:fixed; inset:0; z-index:100;
-    background:rgba(7,7,15,.92); backdrop-filter:blur(8px);
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:20px; transition:opacity .4s; }
-  .overlay.hidden { opacity:0; pointer-events:none; }
-  .overlay-icon { font-size:3rem; animation:spin 2s linear infinite; }
-  @keyframes spin { to{transform:rotate(360deg)} }
-  .overlay-text { font-family:'Orbitron',sans-serif; font-size:1rem;
-    color:var(--glow); letter-spacing:.15em; }
-  .overlay-sub { font-size:.7rem; color:var(--muted); max-width:320px;
-    text-align:center; line-height:1.7; }
+.sticker{border-radius:7px;transition:background-color .18s ease;
+  box-shadow:inset 0 3px 6px rgba(255,255,255,.25),inset 0 -3px 6px rgba(0,0,0,.35),0 1px 3px rgba(0,0,0,.5)}
+.sticker.flash{animation:sFlash .25s ease}
+@keyframes sFlash{0%{transform:scale(1);filter:brightness(1)}50%{transform:scale(.88);filter:brightness(1.6)}100%{transform:scale(1);filter:brightness(1)}}
 
-  /* ─── STAGE ───────────────────────────────────────────────────── */
-  .stage { display:flex; gap:40px; align-items:center; flex-wrap:wrap; justify-content:center; }
+.move-log-panel{display:flex;flex-direction:column;gap:8px;min-width:180px;max-width:200px}
+.move-log-title{font-size:.6rem;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;text-align:center}
+.move-log{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.log-entry{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:8px;
+  background:rgba(255,255,255,.03);border:1px solid var(--border);font-size:.7rem;animation:sIn .2s ease}
+@keyframes sIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.log-avatar{font-size:.85rem}
+.log-move{font-family:'Orbitron',sans-serif;font-weight:700;color:#fff;font-size:.75rem;min-width:24px}
+.log-you{font-size:.55rem;color:var(--gold);margin-left:auto}
+.log-entry.mine{background:rgba(79,111,255,.06);border-color:rgba(79,111,255,.2)}
 
-  .cube-viewport { width:300px; height:300px; perspective:800px;
-    display:flex; align-items:center; justify-content:center; }
+.info-bar{display:flex;gap:20px;align-items:center;background:var(--panel);
+  border:1px solid var(--border);border-radius:12px;padding:10px 22px}
+.info-item{display:flex;flex-direction:column;align-items:center;gap:3px}
+.info-value{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff}
+.info-key{font-size:.58rem;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.info-sep{width:1px;height:32px;background:var(--border)}
+.last-move{font-family:'Orbitron',sans-serif;font-size:.95rem;color:var(--glow);
+  min-width:44px;text-align:center;text-shadow:0 0 12px rgba(79,111,255,.6)}
+.last-move.fade{animation:fMove .5s ease}
+@keyframes fMove{0%{transform:translateY(-6px);opacity:0}30%{opacity:1}100%{transform:none;opacity:1}}
+.solved-badge{font-family:'Orbitron',sans-serif;font-size:.68rem;letter-spacing:.1em;
+  padding:5px 14px;border-radius:20px;background:rgba(0,181,24,.12);
+  border:1px solid rgba(0,181,24,.4);color:#00e528;display:none}
+.solved-badge.show{display:block;animation:pGreen 1.5s ease infinite}
+@keyframes pGreen{0%,100%{box-shadow:0 0 6px rgba(0,229,40,.3)}50%{box-shadow:0 0 18px rgba(0,229,40,.7)}}
 
-  .cube-scene { width:calc(var(--cube-half)*2); height:calc(var(--cube-half)*2);
-    transform-style: preserve-3d;
-    -webkit-transform-style: preserve-3d;
-    transform: rotateX(-26deg) rotateY(40deg);
-    -webkit-transform: rotateX(-26deg) rotateY(40deg);
-    transition: transform .08s ease;
-    -webkit-transition: -webkit-transform .08s ease; }
-  .cube-scene.animating { transition: transform .4s ease; }
-  .cube-viewport {
-    cursor: grab;
-    -webkit-perspective: 800px;
-    perspective: 800px;
-  }
-  .cube-viewport.dragging { cursor: grabbing; }
+.controls{display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:780px}
+.section-title{font-size:.58rem;letter-spacing:.2em;color:var(--muted);
+  text-transform:uppercase;text-align:center;margin-bottom:8px}
+.move-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;width:100%}
 
-  .face { position:absolute; width:calc(var(--cube-half)*2); height:calc(var(--cube-half)*2);
-    display:grid; grid-template-columns:repeat(3,var(--sticker));
-    grid-template-rows:repeat(3,var(--sticker)); gap:var(--gap);
-    padding:var(--gap); background:#111; border:2px solid rgba(255,255,255,.08);
-    -webkit-backface-visibility: visible;
-    backface-visibility: visible; }
+.btn{font-family:'Orbitron',sans-serif;font-size:.72rem;font-weight:700;letter-spacing:.04em;
+  border:none;border-radius:10px;cursor:pointer;padding:12px 6px;position:relative;overflow:hidden;
+  transition:transform .12s,box-shadow .12s,filter .12s;user-select:none}
+.btn:hover{transform:translateY(-2px);filter:brightness(1.15)}
+.btn:active{transform:translateY(1px) scale(.96);filter:brightness(.9)}
+.btn::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.15) 0%,transparent 60%);border-radius:inherit}
 
-  .face-F{transform:translateZ(var(--cube-half));-webkit-transform:translateZ(var(--cube-half))}
-  .face-B{transform:rotateY(180deg) translateZ(var(--cube-half));-webkit-transform:rotateY(180deg) translateZ(var(--cube-half))}
-  .face-R{transform:rotateY(90deg)  translateZ(var(--cube-half));-webkit-transform:rotateY(90deg)  translateZ(var(--cube-half))}
-  .face-L{transform:rotateY(-90deg) translateZ(var(--cube-half));-webkit-transform:rotateY(-90deg) translateZ(var(--cube-half))}
-  .face-U{transform:rotateX(90deg)  translateZ(var(--cube-half));-webkit-transform:rotateX(90deg)  translateZ(var(--cube-half))}
-  .face-D{transform:rotateX(-90deg) translateZ(var(--cube-half));-webkit-transform:rotateX(-90deg) translateZ(var(--cube-half))}
+.btn-U {background:linear-gradient(145deg,#1a3aff,#0d23a8);color:#fff;box-shadow:0 4px 16px rgba(26,58,255,.35)}
+.btn-Uc{background:linear-gradient(145deg,#0028cc,#001a7a);color:#aac4ff;box-shadow:0 4px 14px rgba(26,58,255,.25)}
+.btn-D {background:linear-gradient(145deg,#cca800,#7a6300);color:#fff;box-shadow:0 4px 16px rgba(204,168,0,.35)}
+.btn-Dc{background:linear-gradient(145deg,#9a7e00,#5c4a00);color:#ffd;box-shadow:0 4px 14px rgba(204,168,0,.25)}
+.btn-F {background:linear-gradient(145deg,#00a015,#005a0c);color:#fff;box-shadow:0 4px 16px rgba(0,160,21,.35)}
+.btn-Fc{background:linear-gradient(145deg,#007a10,#003d08);color:#b8ffbf;box-shadow:0 4px 14px rgba(0,160,21,.25)}
+.btn-B {background:linear-gradient(145deg,#b34200,#5c2200);color:#fff;box-shadow:0 4px 16px rgba(179,66,0,.35)}
+.btn-Bc{background:linear-gradient(145deg,#8c3400,#3d1700);color:#ffd4b8;box-shadow:0 4px 14px rgba(179,66,0,.25)}
+.btn-R {background:linear-gradient(145deg,#cc0000,#7a0000);color:#fff;box-shadow:0 4px 16px rgba(204,0,0,.35)}
+.btn-Rc{background:linear-gradient(145deg,#9a0000,#4d0000);color:#ffb8b8;box-shadow:0 4px 14px rgba(204,0,0,.25)}
+.btn-L {background:linear-gradient(145deg,#cc5500,#7a3300);color:#fff;box-shadow:0 4px 16px rgba(204,85,0,.35)}
+.btn-Lc{background:linear-gradient(145deg,#9a4000,#4d2000);color:#ffd4a0;box-shadow:0 4px 14px rgba(204,85,0,.25)}
 
-  .sticker { border-radius:7px; transition:background-color .18s ease;
-    box-shadow:inset 0 3px 6px rgba(255,255,255,.25),inset 0 -3px 6px rgba(0,0,0,.35),
-               0 1px 3px rgba(0,0,0,.5); }
-  .sticker.flash { animation:stickerFlash .25s ease; }
-  @keyframes stickerFlash {
-    0%{transform:scale(1);filter:brightness(1)}
-    50%{transform:scale(.88);filter:brightness(1.6)}
-    100%{transform:scale(1);filter:brightness(1)} }
+.action-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%}
+.btn-reset   {background:linear-gradient(145deg,#1f1f3a,#12122a);color:var(--gold);
+  border:1px solid rgba(212,175,55,.35);font-size:.75rem;padding:13px}
+.btn-scramble{background:linear-gradient(145deg,#2a1f3a,#1a122a);color:#c084fc;
+  border:1px solid rgba(192,132,252,.35);font-size:.75rem;padding:13px}
+.btn-solve   {background:linear-gradient(145deg,#0a3a2a,#051a12);color:#34d399;
+  border:1px solid rgba(52,211,153,.4);font-size:.75rem;padding:13px}
+.btn-solve:disabled{opacity:.4;cursor:not-allowed;transform:none!important;filter:none!important}
+.btn-solve.solving{background:linear-gradient(145deg,#0a2a3a,#051218);color:#38bdf8;
+  border-color:rgba(56,189,248,.4);animation:sPulse 1s ease infinite}
+@keyframes sPulse{0%,100%{box-shadow:0 0 8px rgba(52,211,153,.3)}50%{box-shadow:0 0 20px rgba(52,211,153,.7)}}
+.btn-label-pair{display:flex;flex-direction:column;align-items:center;gap:2px}
+.btn-move{font-size:.82rem}
+.btn-arrow{font-size:.6rem;opacity:.7}
 
-  /* ─── NET VIEW ─────────────────────────────────────────────────── */
-  .net-panel { display:flex; flex-direction:column; align-items:center; gap:10px; }
-  .net-label { font-size:.62rem; letter-spacing:.18em; color:var(--muted); text-transform:uppercase; }
-  .net { display:grid; grid-template-columns:repeat(4,calc(var(--sticker)*.65 * 3 + var(--gap)*4));
-    grid-template-rows:repeat(3,calc(var(--sticker)*.65 * 3 + var(--gap)*4)); gap:5px; }
-  .net-face { display:grid; grid-template-columns:repeat(3,calc(var(--sticker)*.65));
-    grid-template-rows:repeat(3,calc(var(--sticker)*.65)); gap:3px; padding:3px;
-    background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:6px; }
-  .net-face.ghost { visibility:hidden; }
-  .net-sticker { border-radius:4px; transition:background-color .18s ease;
-    box-shadow:inset 0 2px 4px rgba(255,255,255,.2),inset 0 -2px 4px rgba(0,0,0,.25); }
+.kbd-hint{font-size:.58rem;color:var(--muted);letter-spacing:.1em;text-align:center}
+.kbd-hint kbd{background:rgba(255,255,255,.07);border:1px solid var(--border);
+  border-radius:4px;padding:1px 5px;font-family:inherit}
 
-  /* ─── MOVE LOG ─────────────────────────────────────────────────── */
-  .move-log-panel { display:flex; flex-direction:column; gap:8px;
-    min-width:180px; max-width:200px; }
-  .move-log-title { font-size:.6rem; letter-spacing:.18em; color:var(--muted);
-    text-transform:uppercase; text-align:center; }
-  .move-log { display:flex; flex-direction:column; gap:4px;
-    max-height:200px; overflow-y:auto;
-    scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
-  .log-entry { display:flex; align-items:center; gap:8px;
-    padding:5px 10px; border-radius:8px;
-    background:rgba(255,255,255,.03); border:1px solid var(--border);
-    font-size:.7rem; animation:slideIn .2s ease; }
-  @keyframes slideIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
-  .log-avatar { font-size:.85rem; }
-  .log-move { font-family:'Orbitron',sans-serif; font-weight:700; color:#fff;
-    font-size:.75rem; min-width:24px; }
-  .log-you { font-size:.55rem; color:var(--gold); margin-left:auto; }
-  .log-entry.mine { background:rgba(79,111,255,.06); border-color:rgba(79,111,255,.2); }
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(60px);
+  background:#1a1a30;border:1px solid var(--border);border-radius:12px;
+  padding:10px 22px;font-size:.75rem;color:var(--text);
+  transition:transform .3s ease,opacity .3s ease;opacity:0;z-index:200}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 
-  /* ─── INFO BAR ─────────────────────────────────────────────────── */
-  .info-bar { display:flex; gap:20px; align-items:center;
-    background:var(--panel); border:1px solid var(--border);
-    border-radius:12px; padding:10px 22px; }
-  .info-item { display:flex; flex-direction:column; align-items:center; gap:3px; }
-  .info-value { font-family:'Orbitron',sans-serif; font-size:1.3rem; font-weight:700; color:#fff; }
-  .info-key   { font-size:.58rem; letter-spacing:.14em; color:var(--muted); text-transform:uppercase; }
-  .info-sep   { width:1px; height:32px; background:var(--border); }
-  .last-move  { font-family:'Orbitron',sans-serif; font-size:.95rem; color:var(--glow);
-    min-width:44px; text-align:center; text-shadow:0 0 12px rgba(79,111,255,.6); }
-  .last-move.fade { animation:fadeMove .5s ease; }
-  @keyframes fadeMove {
-    0%{transform:translateY(-6px);opacity:0} 30%{opacity:1} 100%{transform:none;opacity:1} }
-  .solved-badge { font-family:'Orbitron',sans-serif; font-size:.68rem; letter-spacing:.1em;
-    padding:5px 14px; border-radius:20px;
-    background:rgba(0,181,24,.12); border:1px solid rgba(0,181,24,.4); color:#00e528; display:none; }
-  .solved-badge.show { display:block; animation:pulseGreen 1.5s ease infinite; }
-  @keyframes pulseGreen {
-    0%,100%{box-shadow:0 0 6px rgba(0,229,40,.3)} 50%{box-shadow:0 0 18px rgba(0,229,40,.7)} }
-
-  /* ─── CONTROLS ─────────────────────────────────────────────────── */
-  .controls { display:flex; flex-direction:column; align-items:center; gap:14px;
-    width:100%; max-width:780px; }
-  .section-title { font-size:.58rem; letter-spacing:.2em; color:var(--muted);
-    text-transform:uppercase; text-align:center; margin-bottom:8px; }
-  .move-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; width:100%; }
-
-  .btn { font-family:'Orbitron',sans-serif; font-size:.72rem; font-weight:700;
-    letter-spacing:.04em; border:none; border-radius:10px; cursor:pointer;
-    padding:12px 6px; position:relative; overflow:hidden;
-    transition:transform .12s,box-shadow .12s,filter .12s; user-select:none; }
-  .btn:hover  { transform:translateY(-2px); filter:brightness(1.15); }
-  .btn:active { transform:translateY(1px) scale(.96); filter:brightness(.9); }
-  .btn::after { content:''; position:absolute; inset:0;
-    background:linear-gradient(180deg,rgba(255,255,255,.15) 0%,transparent 60%);
-    border-radius:inherit; }
-
-  .btn-U  {background:linear-gradient(145deg,#1a3aff,#0d23a8);color:#fff;box-shadow:0 4px 16px rgba(26,58,255,.35)}
-  .btn-Uc {background:linear-gradient(145deg,#0028cc,#001a7a);color:#aac4ff;box-shadow:0 4px 14px rgba(26,58,255,.25)}
-  .btn-D  {background:linear-gradient(145deg,#cca800,#7a6300);color:#fff;box-shadow:0 4px 16px rgba(204,168,0,.35)}
-  .btn-Dc {background:linear-gradient(145deg,#9a7e00,#5c4a00);color:#ffd;box-shadow:0 4px 14px rgba(204,168,0,.25)}
-  .btn-F  {background:linear-gradient(145deg,#00a015,#005a0c);color:#fff;box-shadow:0 4px 16px rgba(0,160,21,.35)}
-  .btn-Fc {background:linear-gradient(145deg,#007a10,#003d08);color:#b8ffbf;box-shadow:0 4px 14px rgba(0,160,21,.25)}
-  .btn-B  {background:linear-gradient(145deg,#b34200,#5c2200);color:#fff;box-shadow:0 4px 16px rgba(179,66,0,.35)}
-  .btn-Bc {background:linear-gradient(145deg,#8c3400,#3d1700);color:#ffd4b8;box-shadow:0 4px 14px rgba(179,66,0,.25)}
-  .btn-R  {background:linear-gradient(145deg,#cc0000,#7a0000);color:#fff;box-shadow:0 4px 16px rgba(204,0,0,.35)}
-  .btn-Rc {background:linear-gradient(145deg,#9a0000,#4d0000);color:#ffb8b8;box-shadow:0 4px 14px rgba(204,0,0,.25)}
-  .btn-L  {background:linear-gradient(145deg,#cc5500,#7a3300);color:#fff;box-shadow:0 4px 16px rgba(204,85,0,.35)}
-  .btn-Lc {background:linear-gradient(145deg,#9a4000,#4d2000);color:#ffd4a0;box-shadow:0 4px 14px rgba(204,85,0,.25)}
-
-  .action-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%; }
-  .btn-reset    { background:linear-gradient(145deg,#1f1f3a,#12122a); color:var(--gold);
-    border:1px solid rgba(212,175,55,.35); font-size:.75rem; padding:13px; }
-  .btn-scramble { background:linear-gradient(145deg,#2a1f3a,#1a122a); color:#c084fc;
-    border:1px solid rgba(192,132,252,.35); font-size:.75rem; padding:13px; }
-  .btn-solve { background:linear-gradient(145deg,#0a3a2a,#051a12); color:#34d399;
-    border:1px solid rgba(52,211,153,.4); font-size:.75rem; padding:13px; }
-  .btn-solve:disabled { opacity:.4; cursor:not-allowed; transform:none !important; filter:none !important; }
-  .btn-solve.solving { background:linear-gradient(145deg,#0a2a3a,#051218); color:#38bdf8;
-    border-color:rgba(56,189,248,.4); animation:solvePulse 1s ease infinite; }
-  @keyframes solvePulse { 0%,100%{box-shadow:0 0 8px rgba(52,211,153,.3)} 50%{box-shadow:0 0 20px rgba(52,211,153,.7)} }
-  .btn-label-pair { display:flex; flex-direction:column; align-items:center; gap:2px; }
-  .btn-move  { font-size:.82rem; }
-  .btn-arrow { font-size:.6rem; opacity:.7; }
-
-  .kbd-hint { font-size:.58rem; color:var(--muted); letter-spacing:.1em; text-align:center; }
-  .kbd-hint kbd { background:rgba(255,255,255,.07); border:1px solid var(--border);
-    border-radius:4px; padding:1px 5px; font-family:inherit; }
-
-  /* ─── TOAST ───────────────────────────────────────────────────── */
-  .toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(60px);
-    background:#1a1a30; border:1px solid var(--border); border-radius:12px;
-    padding:10px 22px; font-size:.75rem; color:var(--text);
-    transition:transform .3s ease, opacity .3s ease; opacity:0; z-index:200; }
-  .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
-
-  /* ─── MOBILE RESPONSIVE ───────────────────────────────────────── */
-  @media (max-width: 700px) {
-    :root {
-      --cube-half: 75px;
-      --sticker: 46px;
-      --gap: 3px;
-    }
-
-    .app { padding: 12px 10px 28px; gap: 14px; }
-
-    /* Header */
-    .header { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
-    .title-block h1 { font-size: 1.3rem; }
-    .subtitle { font-size: .6rem; }
-    .status-bar { justify-content: center; flex-wrap: wrap; gap: 6px; }
-    .live-dot, .online-count, .my-badge { font-size: .6rem; padding: 4px 10px; }
-
-    /* Stage: cube on top, net below, hide move log */
-    .stage { flex-direction: column; align-items: center; gap: 16px; }
-    .move-log-panel { display: none; }
-
-    /* 3D cube */
-    .cube-viewport { width: 210px; height: 210px; }
-
-    /* Net view — scale down */
-    .net-panel { width: 100%; }
-    .net {
-      gap: 3px;
-      grid-template-columns: repeat(4, calc(var(--sticker)*.6 * 3 + 3px*4));
-      grid-template-rows: repeat(3, calc(var(--sticker)*.6 * 3 + 3px*4));
-    }
-    .net-face {
-      grid-template-columns: repeat(3, calc(var(--sticker)*.6));
-      grid-template-rows: repeat(3, calc(var(--sticker)*.6));
-      gap: 2px; padding: 2px;
-    }
-
-    /* Info bar */
-    .info-bar { padding: 8px 14px; gap: 12px; }
-    .info-value { font-size: 1rem; }
-    .info-key { font-size: .52rem; }
-
-    /* Buttons */
-    .controls { gap: 10px; }
-    .section-title { font-size: .55rem; margin-bottom: 6px; }
-    .move-grid { grid-template-columns: repeat(6, 1fr); gap: 5px; }
-    .btn { padding: 10px 2px; font-size: .6rem; border-radius: 8px; }
-    .btn-move { font-size: .78rem; }
-    .btn-arrow { display: none; }
-    .action-row { gap: 8px; }
-    .btn-reset, .btn-scramble, .btn-solve { padding: 10px 4px; font-size: .62rem; }
-    .kbd-hint { display: none; }
-  }
+@media(max-width:700px){
+  :root{--half:75px;--cell:46px;--gap:3px}
+  .app{padding:12px 10px 28px;gap:14px}
+  .header{flex-direction:column;align-items:center;text-align:center;gap:8px}
+  .title-block h1{font-size:1.3rem}
+  .status-bar{justify-content:center;flex-wrap:wrap;gap:6px}
+  .live-dot,.online-count,.my-badge{font-size:.6rem;padding:4px 10px}
+  .stage{flex-direction:column;align-items:center;gap:16px}
+  .move-log-panel{display:none}
+  .cube-viewport{width:210px;height:210px}
+  .info-bar{padding:8px 14px;gap:12px}
+  .info-value{font-size:1rem}
+  .info-key{font-size:.52rem}
+  .controls{gap:10px}
+  .section-title{font-size:.55rem;margin-bottom:6px}
+  .move-grid{grid-template-columns:repeat(6,1fr);gap:5px}
+  .btn{padding:10px 2px;font-size:.6rem;border-radius:8px}
+  .btn-move{font-size:.78rem}
+  .btn-arrow{display:none}
+  .action-row{gap:8px}
+  .btn-reset,.btn-scramble,.btn-solve{padding:10px 4px;font-size:.62rem}
+  .kbd-hint{display:none}
+}
 </style>
 </head>
 <body>
 <div class="stars"></div>
 
-<!-- Connection overlay -->
 <div class="overlay" id="overlay">
   <div class="overlay-icon">⧖</div>
-  <div class="overlay-text">CONNECTING TO FIREBASE</div>
-  <div class="overlay-sub">Add your Firebase config to the &lt;script&gt; block at the top of this file, then open in a browser.</div>
+  <div class="overlay-text">CONNECTING…</div>
+  <div class="overlay-sub">Connecting to Firebase real-time database.</div>
 </div>
 
 <div class="app">
-
-  <!-- Header -->
   <div class="header">
     <div class="title-block">
       <h1>RUBIK'S <span>CUBE</span></h1>
@@ -383,36 +269,24 @@
     </div>
   </div>
 
-  <!-- Stage -->
   <div class="stage">
-
-    <!-- 3D Cube -->
-    <div class="cube-viewport">
+    <div class="cube-viewport" id="cubeVP">
       <div class="cube-scene" id="cubeScene">
-        <div class="face face-F" id="face3d-F"></div>
-        <div class="face face-B" id="face3d-B"></div>
-        <div class="face face-R" id="face3d-R"></div>
-        <div class="face face-L" id="face3d-L"></div>
-        <div class="face face-U" id="face3d-U"></div>
-        <div class="face face-D" id="face3d-D"></div>
+        <div class="face face-F" id="face-F"></div>
+        <div class="face face-B" id="face-B"></div>
+        <div class="face face-R" id="face-R"></div>
+        <div class="face face-L" id="face-L"></div>
+        <div class="face face-U" id="face-U"></div>
+        <div class="face face-D" id="face-D"></div>
       </div>
     </div>
 
-    <!-- Net view -->
-    <div class="net-panel">
-      <div class="net-label">Unfolded View</div>
-      <div class="net" id="netView"></div>
-    </div>
-
-    <!-- Move log -->
     <div class="move-log-panel">
       <div class="move-log-title">Move History</div>
       <div class="move-log" id="moveLog"></div>
     </div>
-
   </div>
 
-  <!-- Info bar -->
   <div class="info-bar">
     <div class="info-item">
       <div class="info-value" id="moveCount">0</div>
@@ -427,7 +301,6 @@
     <div class="solved-badge" id="solvedBadge">SOLVED ✓</div>
   </div>
 
-  <!-- Controls -->
   <div class="controls">
     <div style="width:100%">
       <div class="section-title">— Face Rotations —</div>
@@ -446,148 +319,156 @@
         <button class="btn btn-Lc" onclick="doMove('L\'')"><div class="btn-label-pair"><span class="btn-move">L′</span><span class="btn-arrow">↺ CCW</span></div></button>
       </div>
     </div>
-    <div class="action-row" style="grid-template-columns:1fr 1fr 1fr">
-      <button class="btn btn-reset"    onclick="resetCube()">⟳ &nbsp;RESET</button>
-      <button class="btn btn-scramble" onclick="scrambleCube()">⚄ &nbsp;SCRAMBLE</button>
-      <button class="btn btn-solve"    onclick="solveCube()" id="solveBtn">★ &nbsp;SOLVE</button>
+    <div class="action-row">
+      <button class="btn btn-reset"    onclick="resetCube()">⟳ RESET</button>
+      <button class="btn btn-scramble" onclick="scrambleCube()">⚄ SCRAMBLE</button>
+      <button class="btn btn-solve"    onclick="solveCube()" id="solveBtn">★ SOLVE</button>
     </div>
     <div class="kbd-hint">
-      <kbd>U</kbd><kbd>D</kbd><kbd>F</kbd><kbd>B</kbd><kbd>R</kbd><kbd>L</kbd> + <kbd>Shift</kbd> for CCW &nbsp;·&nbsp;
-      <kbd>Space</kbd> scramble &nbsp;·&nbsp; <kbd>Esc</kbd> reset
+      <kbd>U</kbd><kbd>D</kbd><kbd>F</kbd><kbd>B</kbd><kbd>R</kbd><kbd>L</kbd>
+      + <kbd>Shift</kbd> CCW &nbsp;·&nbsp; <kbd>Space</kbd> scramble &nbsp;·&nbsp; <kbd>Esc</kbd> reset
     </div>
   </div>
-
 </div>
-
 <div class="toast" id="toast"></div>
 
 <script type="module">
-// ─── Wait for Firebase to be ready ────────────────────────────────────────────
-function waitForFB(cb, tries = 0) {
+// ─── Firebase wait ───────────────────────────────────────────────────────────
+function waitForFB(cb, n=0) {
   if (window._fb) return cb(window._fb);
-  if (tries > 50) return; // give up after 5s
-  setTimeout(() => waitForFB(cb, tries + 1), 100);
+  if (n > 50) return;
+  setTimeout(() => waitForFB(cb, n+1), 100);
 }
 
-// ─── CUBE LOGIC ───────────────────────────────────────────────────────────────
-const COLORS   = {W:'#f0f0f0',Y:'#ffd600',G:'#00b518',B:'#1565ff',O:'#ff7200',R:'#e00000'};
-const FACES    = ['U','D','F','B','L','R'];
-const INITIAL  = {U:Array(9).fill('Y'),D:Array(9).fill('W'),F:Array(9).fill('G'),
-                  B:Array(9).fill('B'),L:Array(9).fill('O'),R:Array(9).fill('R')};
-
+// ─── State ───────────────────────────────────────────────────────────────────
+const COLORS = {W:'#f0f0f0',Y:'#ffd600',G:'#00b518',B:'#1565ff',O:'#ff7200',R:'#e00000'};
+const FACES  = ['U','D','F','B','L','R'];
+const SOLVED = {
+  U:Array(9).fill('Y'), D:Array(9).fill('W'), F:Array(9).fill('G'),
+  B:Array(9).fill('B'), L:Array(9).fill('R'), R:Array(9).fill('O')
+};
 let state = {};
-let localMoveCount = 0;
+function clone(s) { const c={}; for (const k in s) c[k]=[...s[k]]; return c; }
 
-function clone(s) { const c={}; for(const k in s) c[k]=[...s[k]]; return c; }
+// ─── Move functions ──────────────────────────────────────────────────────────
+function cw(f) { return [f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]]; }
 
-function rotateCW(f)  { return [f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]]; }
+function U_cw(s) {
+  s.U = cw(s.U);
+  const [a,b,c] = [s.F[0],s.F[1],s.F[2]];
+  [s.F[0],s.F[1],s.F[2]] = [s.L[0],s.L[1],s.L[2]];
+  [s.L[0],s.L[1],s.L[2]] = [s.B[8],s.B[7],s.B[6]];
+  [s.B[8],s.B[7],s.B[6]] = [s.R[0],s.R[1],s.R[2]];
+  [s.R[0],s.R[1],s.R[2]] = [a,b,c];
+}
+function D_cw(s) {
+  s.D = cw(s.D);
+  const [a,b,c] = [s.F[6],s.F[7],s.F[8]];
+  [s.F[6],s.F[7],s.F[8]] = [s.R[6],s.R[7],s.R[8]];
+  [s.R[6],s.R[7],s.R[8]] = [s.B[2],s.B[1],s.B[0]];
+  [s.B[2],s.B[1],s.B[0]] = [s.L[6],s.L[7],s.L[8]];
+  [s.L[6],s.L[7],s.L[8]] = [a,b,c];
+}
+function F_cw(s) {
+  s.F = cw(s.F);
+  const [a,b,c] = [s.U[6],s.U[7],s.U[8]];
+  [s.U[6],s.U[7],s.U[8]] = [s.L[8],s.L[5],s.L[2]];
+  [s.L[8],s.L[5],s.L[2]] = [s.D[2],s.D[1],s.D[0]];
+  [s.D[2],s.D[1],s.D[0]] = [s.R[6],s.R[3],s.R[0]];
+  [s.R[6],s.R[3],s.R[0]] = [c,b,a];
+}
+function B_cw(s) {
+  s.B = cw(s.B);
+  const [a,b,c] = [s.U[0],s.U[1],s.U[2]];
+  [s.U[0],s.U[1],s.U[2]] = [s.R[2],s.R[5],s.R[8]];
+  [s.R[2],s.R[5],s.R[8]] = [s.D[8],s.D[7],s.D[6]];
+  [s.D[8],s.D[7],s.D[6]] = [s.L[0],s.L[3],s.L[6]];
+  [s.L[0],s.L[3],s.L[6]] = [c,b,a];
+}
+function R_cw(s) {
+  s.R = cw(s.R);
+  const [a,b,c] = [s.F[2],s.F[5],s.F[8]];
+  [s.F[2],s.F[5],s.F[8]] = [s.D[2],s.D[5],s.D[8]];
+  [s.D[2],s.D[5],s.D[8]] = [s.B[2],s.B[5],s.B[8]];
+  [s.B[2],s.B[5],s.B[8]] = [s.U[2],s.U[5],s.U[8]];
+  [s.U[2],s.U[5],s.U[8]] = [a,b,c];
+}
+function L_cw(s) {
+  s.L = cw(s.L);
+  const [a,b,c] = [s.F[0],s.F[3],s.F[6]];
+  [s.F[0],s.F[3],s.F[6]] = [s.U[0],s.U[3],s.U[6]];
+  [s.U[0],s.U[3],s.U[6]] = [s.B[0],s.B[3],s.B[6]];
+  [s.B[0],s.B[3],s.B[6]] = [s.D[0],s.D[3],s.D[6]];
+  [s.D[0],s.D[3],s.D[6]] = [a,b,c];
+}
 
 const MOVES = {
-  'U':  s=>{MOVES["U_cw"](s)},
-  "U'": s=>{MOVES["U_cw"](s);MOVES["U_cw"](s);MOVES["U_cw"](s)},
-  "U_cw": s=>{s.U=rotateCW(s.U);const[t0,t1,t2]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[t0,t1,t2]},
-  'D':  s=>{MOVES["D_cw"](s);MOVES["D_cw"](s);MOVES["D_cw"](s)},
-  "D'": s=>{MOVES["D_cw"](s)},
-  "D_cw": s=>{s.D=rotateCW(s.D);const[t0,t1,t2]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[s.B[2],s.B[1],s.B[0]];[s.B[2],s.B[1],s.B[0]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[t0,t1,t2]},
-  'F':  s=>{s.F=rotateCW(s.F);const[t0,t1,t2]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[6],s.R[3],s.R[0]];[s.R[6],s.R[3],s.R[0]]=[t2,t1,t0]},
-  "F'": s=>{MOVES.F(s);MOVES.F(s);MOVES.F(s)},
-  'B':  s=>{s.B=rotateCW(s.B);const[t0,t1,t2]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[0],s.L[3],s.L[6]];[s.L[0],s.L[3],s.L[6]]=[t2,t1,t0]},
-  "B'": s=>{MOVES.B(s);MOVES.B(s);MOVES.B(s)},
-  'R':  s=>{s.R=rotateCW(s.R);const[t0,t1,t2]=[s.F[2],s.F[5],s.F[8]];[s.F[2],s.F[5],s.F[8]]=[s.D[2],s.D[5],s.D[8]];[s.D[2],s.D[5],s.D[8]]=[s.B[6],s.B[3],s.B[0]];[s.B[6],s.B[3],s.B[0]]=[s.U[2],s.U[5],s.U[8]];[s.U[2],s.U[5],s.U[8]]=[t0,t1,t2]},
-  "R'": s=>{MOVES.R(s);MOVES.R(s);MOVES.R(s)},
-  'L':  s=>{s.L=rotateCW(s.L);const[t0,t1,t2]=[s.F[0],s.F[3],s.F[6]];[s.F[0],s.F[3],s.F[6]]=[s.U[0],s.U[3],s.U[6]];[s.U[0],s.U[3],s.U[6]]=[s.B[8],s.B[5],s.B[2]];[s.B[8],s.B[5],s.B[2]]=[s.D[0],s.D[3],s.D[6]];[s.D[0],s.D[3],s.D[6]]=[t0,t1,t2]},
-  "L'": s=>{MOVES.L(s);MOVES.L(s);MOVES.L(s)},
+  'U':  s => U_cw(s),
+  "U'": s => { U_cw(s); U_cw(s); U_cw(s); },
+  'D':  s => { D_cw(s); D_cw(s); D_cw(s); },
+  "D'": s => D_cw(s),
+  'F':  s => F_cw(s),
+  "F'": s => { F_cw(s); F_cw(s); F_cw(s); },
+  'B':  s => B_cw(s),
+  "B'": s => { B_cw(s); B_cw(s); B_cw(s); },
+  'R':  s => R_cw(s),
+  "R'": s => { R_cw(s); R_cw(s); R_cw(s); },
+  'L':  s => L_cw(s),
+  "L'": s => { L_cw(s); L_cw(s); L_cw(s); },
 };
 
-function isSolved() { return FACES.every(f=>state[f].every(c=>c===state[f][0])); }
+function isSolved() { return FACES.every(f => state[f].every(c => c === state[f][0])); }
 
-// ─── RENDER ───────────────────────────────────────────────────────────────────
-function renderAll(oldState) {
-  FACES.forEach(f => {
-    render3DFace(f, oldState ? oldState[f] : null);
-    renderNetFace(f);
-  });
-  document.getElementById('solvedBadge').classList.toggle('show', isSolved());
-}
+// ─── Rendering ───────────────────────────────────────────────────────────────
+//
+// face-B: scaleX(-1) on the same transform element cancels the rotateY(180deg) H-mirror.
+// Works in Chrome, Firefox, Edge. Stickers inserted in normal state order 0-8.
 
-// B: rotateY(180deg) — full 180° remap needed (left-right + top-bottom flip)
-// L: rotateY(-90deg) — same full 180° remap needed (data stored in vertically-flipped convention)
-const BACK_LEFT_REMAP = [8,7,6,5,4,3,2,1,0];
-function faceColors(name) {
-  const raw = state[name];
-  if (name === 'B' || name === 'L') return BACK_LEFT_REMAP.map(i => raw[i]);
-  return raw;
-}
-function facePrevColors(name, prev) {
-  if (!prev) return null;
-  if (name === 'B' || name === 'L') return BACK_LEFT_REMAP.map(i => prev[i]);
-  return prev;
-}
-
-function render3DFace(name, prevColors) {
-  const face = document.getElementById(`face3d-${name}`);
-  const colors = faceColors(name);
-  const prev   = facePrevColors(name, prevColors);
-  if (!face.children.length) {
-    face.innerHTML = '';
-    colors.forEach(c => {
-      const d = document.createElement('div');
-      d.className = 'sticker';
-      d.style.background = COLORS[c];
-      face.appendChild(d);
-    });
-    return;
+function buildFace(faceName) {
+  const el = document.getElementById(`face-${faceName}`);
+  el.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const d = document.createElement('div');
+    d.className = 'sticker';
+    d.style.background = COLORS[state[faceName][i]];
+    el.appendChild(d);
   }
-  const stickers = face.querySelectorAll('.sticker');
-  colors.forEach((c, i) => {
-    stickers[i].style.background = COLORS[c];
-    if (prev && c !== prev[i]) {
+}
+
+function updateFace(faceName, prevColors) {
+  const el = document.getElementById(`face-${faceName}`);
+  const stickers = el.querySelectorAll('.sticker');
+  for (let i = 0; i < 9; i++) {
+    stickers[i].style.background = COLORS[state[faceName][i]];
+    if (prevColors && state[faceName][i] !== prevColors[i]) {
       stickers[i].classList.remove('flash');
       void stickers[i].offsetWidth;
       stickers[i].classList.add('flash');
     }
-  });
-}
-
-function renderNetFace(name) {
-  const face = document.getElementById(`net-face-${name}`);
-  if (!face) return;
-  const stickers = face.querySelectorAll('.net-sticker');
-  const colors = faceColors(name);
-  colors.forEach((c, i) => stickers[i].style.background = COLORS[c]);
-}
-
-function buildNet() {
-  const net = document.getElementById('netView');
-  net.innerHTML = '';
-  const layout = [[null,'U',null,null],['L','F','R','B'],[null,'D',null,null]];
-  for (let r=0;r<3;r++) for (let c=0;c<4;c++) {
-    const name = layout[r][c];
-    if (!name) { const g=document.createElement('div'); g.className='net-face ghost'; net.appendChild(g); continue; }
-    const fd = document.createElement('div');
-    fd.className = 'net-face'; fd.id = `net-face-${name}`;
-    faceColors(name).forEach(col => {
-      const s = document.createElement('div');
-      s.className='net-sticker'; s.style.background=COLORS[col]; fd.appendChild(s);
-    });
-    net.appendChild(fd);
   }
 }
 
-// ─── MOVE LOG ─────────────────────────────────────────────────────────────────
-function addLogEntry(moveName, avatar, isMe) {
+function renderAll(prevState) {
+  for (const f of FACES) {
+    const el = document.getElementById(`face-${f}`);
+    if (!el.children.length) buildFace(f);
+    else updateFace(f, prevState ? prevState[f] : null);
+  }
+  document.getElementById('solvedBadge').classList.toggle('show', isSolved());
+}
+
+// ─── UI helpers ──────────────────────────────────────────────────────────────
+function addLog(move, avatar, isMe) {
   const log = document.getElementById('moveLog');
-  const entry = document.createElement('div');
-  entry.className = 'log-entry' + (isMe ? ' mine' : '');
-  entry.innerHTML = `<span class="log-avatar">${avatar}</span>
-    <span class="log-move">${moveName}</span>
-    ${isMe ? '<span class="log-you">you</span>' : ''}`;
-  log.prepend(entry);
-  // Keep max 30 entries
+  const e = document.createElement('div');
+  e.className = 'log-entry' + (isMe ? ' mine' : '');
+  e.innerHTML = `<span class="log-avatar">${avatar}</span>`+
+    `<span class="log-move">${move}</span>`+
+    (isMe ? '<span class="log-you">you</span>' : '');
+  log.prepend(e);
   while (log.children.length > 30) log.removeChild(log.lastChild);
 }
 
-// ─── TOAST ────────────────────────────────────────────────────────────────────
 let toastTimer;
 function showToast(msg) {
   const t = document.getElementById('toast');
@@ -596,431 +477,183 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-// ─── FIREBASE INTEGRATION ─────────────────────────────────────────────────────
+// ─── Firebase ────────────────────────────────────────────────────────────────
 waitForFB(fb => {
-  const { db, ref, set, onValue, cubeRef, movesRef, moveCountRef, myId, myAvatar, presenceParent } = fb;
+  const {db,ref,set,onValue,cubeRef,moveCountRef,presenceAll,recentRef,myId,myAvatar} = fb;
 
   document.getElementById('myBadge').textContent = `You: ${myAvatar}`;
   document.getElementById('overlay').classList.add('hidden');
 
-  // ── Presence listener ──────────────────────────────────────────────
-  onValue(presenceParent, snap => {
-    const count = snap.exists() ? Object.keys(snap.val()).length : 0;
-    document.getElementById('onlineCount').textContent = count;
+  onValue(presenceAll, snap => {
+    document.getElementById('onlineCount').textContent =
+      snap.exists() ? Object.keys(snap.val()).length : 0;
   });
 
-  // ── Cube state listener (real-time sync) ───────────────────────────
-  let isFirstLoad = true;
-
+  let firstLoad = true;
   onValue(cubeRef, snap => {
     if (!snap.exists()) {
-      // No state in Firebase yet → push the solved state
-      state = clone(INITIAL);
+      state = clone(SOLVED);
       set(cubeRef, state);
-      buildNet();
       renderAll(null);
-      isFirstLoad = false;
+      firstLoad = false;
       return;
     }
-
-    const remoteState = snap.val();
-    const prevState = isFirstLoad ? null : clone(state);
-
-    // Convert Firebase arrays (objects with numeric keys) back to arrays
+    const remote = snap.val();
+    const prev = firstLoad ? null : clone(state);
     for (const f of FACES) {
-      if (remoteState[f] && !Array.isArray(remoteState[f])) {
-        state[f] = Object.values(remoteState[f]);
-      } else {
-        state[f] = remoteState[f] || [...INITIAL[f]];
-      }
+      state[f] = remote[f]
+        ? (Array.isArray(remote[f]) ? remote[f] : Object.values(remote[f]))
+        : [...SOLVED[f]];
     }
-
-    if (isFirstLoad) {
-      buildNet();
-      renderAll(null);
-      isFirstLoad = false;
-    } else {
-      renderAll(prevState);
-    }
+    renderAll(prev);
+    firstLoad = false;
   });
 
-  // ── Move count listener ────────────────────────────────────────────
   onValue(moveCountRef, snap => {
-    const count = snap.exists() ? snap.val() : 0;
-    document.getElementById('moveCount').textContent = count;
+    document.getElementById('moveCount').textContent = snap.exists() ? snap.val() : 0;
   });
 
-  // ── Recent moves log listener ──────────────────────────────────────
-  const recentMovesRef = ref(db, 'cube/recentMoves');
-  let knownKeys = new Set();
-  let logInitialized = false;
-
-  onValue(recentMovesRef, snap => {
+  let knownKeys = new Set(), logReady = false;
+  onValue(recentRef, snap => {
     if (!snap.exists()) return;
     const entries = snap.val();
-
-    if (!logInitialized) {
-      // First load: show last 10 moves in order, oldest first so newest ends up on top
-      const all = Object.entries(entries).sort((a,b) => a[1].t - b[1].t).slice(-10);
-      document.getElementById('moveLog').innerHTML = '';
-      all.reverse().forEach(([k, e]) => {
-        knownKeys.add(k);
-        addLogEntry(e.m, e.av, e.id === myId);
-      });
-      logInitialized = true;
+    if (!logReady) {
+      Object.entries(entries).sort((a,b)=>a[1].t-b[1].t).slice(-10).reverse()
+        .forEach(([k,e])=>{ knownKeys.add(k); addLog(e.m,e.av,e.id===myId); });
+      logReady = true;
     } else {
-      // Subsequent updates: only add entries we haven't seen yet
-      const newEntries = Object.entries(entries)
-        .filter(([k]) => !knownKeys.has(k))
-        .sort((a, b) => a[1].t - b[1].t); // oldest first so newest lands on top
-      newEntries.forEach(([k, e]) => {
-        knownKeys.add(k);
-        // Don't double-log our own moves (already added in doMove)
-        if (e.id !== myId) addLogEntry(e.m, e.av, false);
-      });
+      Object.entries(entries).filter(([k])=>!knownKeys.has(k))
+        .sort((a,b)=>a[1].t-b[1].t)
+        .forEach(([k,e])=>{ knownKeys.add(k); if(e.id!==myId) addLog(e.m,e.av,false); });
     }
   });
 
-  // ── EXPOSED FUNCTIONS (called by buttons) ──────────────────────────
-
   window.doMove = async function(moveName) {
-    const scene = document.getElementById('cubeScene');
-    scene.classList.add('paused');
-
-    // Apply move and render immediately — don't wait for Firebase round-trip
-    const prevState = clone(state);
+    const prev = clone(state);
     MOVES[moveName](state);
-    renderAll(prevState);
+    renderAll(prev);
 
-    // Push to Firebase
-    const newState = clone(state);
-    await set(cubeRef, newState);
-
-    // Increment move count
-    const newCount = (parseInt(document.getElementById('moveCount').textContent)||0) + 1;
-    await set(moveCountRef, newCount);
-
-    // Add to recent moves log (keep last 50 in DB)
-    const logKey = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    await set(ref(db, `cube/recentMoves/${logKey}`), {
-      m: moveName, av: myAvatar, id: myId, t: Date.now()
-    });
-
-    // Trim log to last 50 entries
-    onValue(recentMovesRef, snap => {
-      if (!snap.exists()) return;
-      const keys = Object.keys(snap.val()).sort();
-      if (keys.length > 50) {
-        keys.slice(0, keys.length - 50).forEach(k => set(ref(db, `cube/recentMoves/${k}`), null));
-      }
-    }, { onlyOnce: true });
-
-    // Update local UI immediately
     const lm = document.getElementById('lastMove');
     lm.textContent = moveName;
     lm.classList.remove('fade'); void lm.offsetWidth; lm.classList.add('fade');
-    addLogEntry(moveName, myAvatar, true);
+    addLog(moveName, myAvatar, true);
 
-    setTimeout(() => scene.classList.remove('paused'), 220);
+    await set(cubeRef, clone(state));
+    const n = (parseInt(document.getElementById('moveCount').textContent)||0) + 1;
+    await set(moveCountRef, n);
+    const key = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+    await set(ref(db,`cube/recentMoves/${key}`), {m:moveName,av:myAvatar,id:myId,t:Date.now()});
   };
 
   window.resetCube = async function() {
     if (!confirm('Reset cube for everyone?')) return;
-    state = clone(INITIAL);
-    await set(cubeRef, state);
+    state = clone(SOLVED);
+    renderAll(null);
+    await set(cubeRef, clone(state));
     await set(moveCountRef, 0);
-    await set(ref(db, 'cube/recentMoves'), null);
+    await set(ref(db,'cube/recentMoves'), null);
     document.getElementById('lastMove').textContent = '—';
     document.getElementById('moveLog').innerHTML = '';
-    document.getElementById('cubeScene').classList.remove('paused');
     showToast('Cube reset for all players!');
   };
 
   window.scrambleCube = async function() {
-    const moveKeys = ["U","U'","D","D'","F","F'","B","B'","R","R'","L","L'"];
-    const n = 20 + Math.floor(Math.random() * 8);
-    const moves = Array.from({length:n}, () => moveKeys[Math.floor(Math.random()*moveKeys.length)]);
-
-    // Apply all moves locally
-    const scrambled = clone(state);
-    moves.forEach(m => MOVES[m](scrambled));
-
-    await set(cubeRef, scrambled);
+    const keys = Object.keys(MOVES);
+    const n = 20 + Math.floor(Math.random()*8);
+    const sc = clone(state);
+    for (let i=0; i<n; i++) MOVES[keys[Math.floor(Math.random()*keys.length)]](sc);
+    await set(cubeRef, sc);
     await set(moveCountRef, (parseInt(document.getElementById('moveCount').textContent)||0) + n);
-
-    showToast(`Scrambled with ${n} random moves — can everyone solve it?`);
+    showToast(`Scrambled with ${n} moves!`);
   };
 
-  // ── Keyboard ────────────────────────────────────────────────────────
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
     const k = e.key.toUpperCase();
     const map = {U:'U',D:'D',F:'F',B:'B',R:'R',L:'L'};
     if (map[k]) { e.preventDefault(); doMove(e.shiftKey ? `${map[k]}'` : map[k]); }
-    if (e.key===' ') { e.preventDefault(); scrambleCube(); }
-    if (e.key==='Escape') resetCube();
+    if (e.key === ' ') { e.preventDefault(); scrambleCube(); }
+    if (e.key === 'Escape') resetCube();
   });
 });
 
-// ─── DRAG TO SPIN ─────────────────────────────────────────────────────────────
-(function() {
-  const viewport = document.querySelector('.cube-viewport');
-  const scene    = document.getElementById('cubeScene');
-  let rotX = -26, rotY = 40;
-  let dragging = false, lastX = 0, lastY = 0;
-  let velX = 0, velY = 0, rafId = null;
-
-  function applyTransform(transition = false) {
-    scene.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+// ─── Drag to spin ─────────────────────────────────────────────────────────────
+(function(){
+  const vp = document.getElementById('cubeVP');
+  const sc = document.getElementById('cubeScene');
+  let rx=-26, ry=40, drag=false, lx=0, ly=0, vx=0, vy=0, raf=null;
+  function apply(){ sc.style.transform=`rotateX(${rx}deg) rotateY(${ry}deg)`; }
+  function inertia(){
+    vx*=0.93; vy*=0.93; rx+=vx; ry+=vy;
+    rx=Math.max(-80,Math.min(80,rx)); apply();
+    if(Math.abs(vx)>.1||Math.abs(vy)>.1) raf=requestAnimationFrame(inertia);
   }
-
-  function inertia() {
-    velX *= 0.93; velY *= 0.93;
-    rotX += velX; rotY += velY;
-    // Clamp X so cube doesn't flip upside-down
-    rotX = Math.max(-80, Math.min(80, rotX));
-    applyTransform();
-    if (Math.abs(velX) > 0.1 || Math.abs(velY) > 0.1) {
-      rafId = requestAnimationFrame(inertia);
-    }
-  }
-
-  function onStart(x, y) {
-    dragging = true;
-    lastX = x; lastY = y;
-    velX = 0; velY = 0;
-    cancelAnimationFrame(rafId);
-    viewport.classList.add('dragging');
-    scene.style.transition = 'none';
-  }
-  function onMove(x, y) {
-    if (!dragging) return;
-    const dx = x - lastX, dy = y - lastY;
-    velY = dx * 0.4;
-    velX = -dy * 0.4;
-    rotY += velY; rotX += velX;
-    rotX = Math.max(-80, Math.min(80, rotX));
-    lastX = x; lastY = y;
-    applyTransform();
-  }
-  function onEnd() {
-    if (!dragging) return;
-    dragging = false;
-    viewport.classList.remove('dragging');
-    rafId = requestAnimationFrame(inertia);
-  }
-
-  // Mouse
-  viewport.addEventListener('mousedown',  e => { e.preventDefault(); onStart(e.clientX, e.clientY); });
-  window .addEventListener('mousemove',   e => onMove(e.clientX, e.clientY));
-  window .addEventListener('mouseup',     onEnd);
-
-  // Touch
-  viewport.addEventListener('touchstart', e => { e.preventDefault(); onStart(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
-  window .addEventListener('touchmove',   e => onMove(e.touches[0].clientX, e.touches[0].clientY), {passive:true});
-  window .addEventListener('touchend',    onEnd);
-
-  applyTransform();
+  function start(x,y){ drag=true;lx=x;ly=y;vx=0;vy=0;cancelAnimationFrame(raf);vp.classList.add('dragging');sc.style.transition='none'; }
+  function move(x,y){ if(!drag)return; vy=(x-lx)*.4;vx=-(y-ly)*.4;ry+=vy;rx+=vx;rx=Math.max(-80,Math.min(80,rx));lx=x;ly=y;apply(); }
+  function end(){ if(!drag)return;drag=false;vp.classList.remove('dragging');raf=requestAnimationFrame(inertia); }
+  vp.addEventListener('mousedown',  e=>{e.preventDefault();start(e.clientX,e.clientY);});
+  window.addEventListener('mousemove', e=>move(e.clientX,e.clientY));
+  window.addEventListener('mouseup',   end);
+  vp.addEventListener('touchstart', e=>{e.preventDefault();start(e.touches[0].clientX,e.touches[0].clientY);},{passive:false});
+  window.addEventListener('touchmove', e=>move(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+  window.addEventListener('touchend',  end);
+  apply();
 })();
 
-
-
-// ══════════════════════════════════════════════════════════════════════════════
-// RUBIK'S CUBE SOLVER — Anytime IDA* with greedy fallback in a Web Worker
-// Solves any scramble in ≤40 moves, always completes in <5s total.
-// ══════════════════════════════════════════════════════════════════════════════
-(function() {
-
-const WORKER_SRC = `
-// ─── Cube state helpers ────────────────────────────────────────────────────────
-const FACES = ['U','D','F','B','L','R'];
+// ─── Solver ───────────────────────────────────────────────────────────────────
+(function(){
+const W=`
+const FACES=['U','D','F','B','L','R'];
 function clone(s){const c={};for(const k in s)c[k]=[...s[k]];return c;}
-function rotateCW(f){return[f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]];}
-
-// ─── Primitive quarter-turn functions (identical to main thread) ───────────────
-function U_cw(s){s.U=rotateCW(s.U);const[a,b,c]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[a,b,c];}
-function D_cw(s){s.D=rotateCW(s.D);const[a,b,c]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[s.B[2],s.B[1],s.B[0]];[s.B[2],s.B[1],s.B[0]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[a,b,c];}
-function F_cw(s){s.F=rotateCW(s.F);const[a,b,c]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[6],s.R[3],s.R[0]];[s.R[6],s.R[3],s.R[0]]=[c,b,a];}
-function B_cw(s){s.B=rotateCW(s.B);const[a,b,c]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[0],s.L[3],s.L[6]];[s.L[0],s.L[3],s.L[6]]=[c,b,a];}
-function R_cw(s){s.R=rotateCW(s.R);const[a,b,c]=[s.F[2],s.F[5],s.F[8]];[s.F[2],s.F[5],s.F[8]]=[s.D[2],s.D[5],s.D[8]];[s.D[2],s.D[5],s.D[8]]=[s.B[6],s.B[3],s.B[0]];[s.B[6],s.B[3],s.B[0]]=[s.U[2],s.U[5],s.U[8]];[s.U[2],s.U[5],s.U[8]]=[a,b,c];}
-function L_cw(s){s.L=rotateCW(s.L);const[a,b,c]=[s.F[0],s.F[3],s.F[6]];[s.F[0],s.F[3],s.F[6]]=[s.U[0],s.U[3],s.U[6]];[s.U[0],s.U[3],s.U[6]]=[s.B[8],s.B[5],s.B[2]];[s.B[8],s.B[5],s.B[2]]=[s.D[0],s.D[3],s.D[6]];[s.D[0],s.D[3],s.D[6]]=[a,b,c];}
-
-// ─── Move application ──────────────────────────────────────────────────────────
-// 'U'=1×U_cw, 'D'=3×D_cw — mirrors exact behaviour of main-thread MOVES object.
-const MOVE_FNS = {
-  'U':  s=>{U_cw(s);},             "U'": s=>{U_cw(s);U_cw(s);U_cw(s);}, 'U2': s=>{U_cw(s);U_cw(s);},
-  'D':  s=>{D_cw(s);D_cw(s);D_cw(s);}, "D'": s=>{D_cw(s);},             'D2': s=>{D_cw(s);D_cw(s);},
-  'F':  s=>{F_cw(s);},             "F'": s=>{F_cw(s);F_cw(s);F_cw(s);}, 'F2': s=>{F_cw(s);F_cw(s);},
-  'B':  s=>{B_cw(s);},             "B'": s=>{B_cw(s);B_cw(s);B_cw(s);}, 'B2': s=>{B_cw(s);B_cw(s);},
-  'R':  s=>{R_cw(s);},             "R'": s=>{R_cw(s);R_cw(s);R_cw(s);}, 'R2': s=>{R_cw(s);R_cw(s);},
-  'L':  s=>{L_cw(s);},             "L'": s=>{L_cw(s);L_cw(s);L_cw(s);}, 'L2': s=>{L_cw(s);L_cw(s);},
-};
-const ALL_MOVES = Object.keys(MOVE_FNS); // 18 moves
-
-function applyMove(s, m) { const ns=clone(s); MOVE_FNS[m](ns); return ns; }
-
-// ─── isSolved & heuristic — both use center sticker [4] (never moves) ─────────
-function isSolved(s) { return FACES.every(f => { const c=s[f][4]; return s[f].every(v=>v===c); }); }
-
-function h(s) {
-  let w=0;
-  for(const f of FACES){const c=s[f][4];for(let i=0;i<9;i++)if(s[f][i]!==c)w++;}
-  return Math.ceil(w/8);
-}
-
-// ─── IDA* (only same-face pruning — safest, no edge-cases) ───────────────────
-const FACE_IDX = {};
-['U',"U'","U2"].forEach(m=>FACE_IDX[m]=0); ['D',"D'","D2"].forEach(m=>FACE_IDX[m]=1);
-['F',"F'","F2"].forEach(m=>FACE_IDX[m]=2); ['B',"B'","B2"].forEach(m=>FACE_IDX[m]=3);
-['R',"R'","R2"].forEach(m=>FACE_IDX[m]=4); ['L',"L'","L2"].forEach(m=>FACE_IDX[m]=5);
-
-let _sol, _deadline;
-function ida(s, g, bound, path, lastFace) {
-  if (Date.now() > _deadline) return 9999;
-  const f = g + h(s);
-  if (f > bound) return f;
-  if (isSolved(s)) { _sol = [...path]; return -1; }
-  if (g >= 30) return f;
-  let min = Infinity;
-  for (const m of ALL_MOVES) {
-    if (FACE_IDX[m] === lastFace) continue; // never move same face twice in a row
-    path.push(m);
-    const t = ida(applyMove(s, m), g+1, bound, path, FACE_IDX[m]);
-    path.pop();
-    if (t === -1) return -1;
-    if (t < min) min = t;
-  }
-  return min;
-}
-
-function idaSolve(s, timeoutMs) {
-  _sol = null; _deadline = Date.now() + timeoutMs;
-  if (isSolved(s)) return [];
-  let bound = h(s);
-  while (bound <= 30) {
-    const t = ida(s, 0, bound, [], -1);
-    if (t === -1) return _sol;          // solution found
-    if (t === 9999) return null;        // timed out
-    if (t === Infinity || t === bound) bound++; // no progress — force next depth
-    else bound = t;
-  }
-  return null;
-}
-
-// ─── Random-restart greedy (guaranteed to eventually solve any cube) ───────────
-// When greedy gets stuck, injects random moves to escape local minima.
-// Never gives up — keeps going until solved.
-function greedySolve(startState) {
-  const moves = [];
-  let s = clone(startState);
-  let stuckFor = 0;
-
-  for (let step = 0; step < 5000; step++) {
-    if (isSolved(s)) return moves;
-
-    // Find the move that most reduces h
-    let bestM = null, bestH = h(s);
-    for (const m of ALL_MOVES) {
-      const hv = h(applyMove(s, m));
-      if (hv < bestH) { bestH = hv; bestM = m; }
-    }
-
-    if (bestM !== null) {
-      // Improvement found — take it
-      moves.push(bestM);
-      s = applyMove(s, bestM);
-      stuckFor = 0;
-    } else {
-      // Stuck in a local minimum — inject random moves to escape
-      stuckFor++;
-      const numRandom = stuckFor > 10 ? 5 : 1;
-      for (let r = 0; r < numRandom; r++) {
-        const rm = ALL_MOVES[Math.floor(Math.random() * ALL_MOVES.length)];
-        moves.push(rm);
-        s = applyMove(s, rm);
-      }
-    }
-  }
-  return isSolved(s) ? moves : null;
-}
-
-// ─── Main solver entry point ───────────────────────────────────────────────────
-self.onmessage = function(e) {
-  const s = e.data;
-  if (isSolved(s)) { self.postMessage({ solution: [] }); return; }
-
-  // Phase 1: IDA* — fast & optimal for most scrambles (5s budget)
-  const idaSol = idaSolve(s, 5000);
-  if (idaSol !== null) { self.postMessage({ solution: idaSol }); return; }
-
-  // Phase 2: random-restart greedy — guaranteed to solve regardless of depth
-  const greedySol = greedySolve(s);
-  if (greedySol !== null) { self.postMessage({ solution: greedySol }); return; }
-
-  // Should never reach here given 5000-step greedy budget
-  self.postMessage({ error: 'Could not solve — try resetting the cube.' });
-};
+function cw(f){return[f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]];}
+function U_cw(s){s.U=cw(s.U);const[a,b,c]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[a,b,c];}
+function D_cw(s){s.D=cw(s.D);const[a,b,c]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[s.B[2],s.B[1],s.B[0]];[s.B[2],s.B[1],s.B[0]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[a,b,c];}
+function F_cw(s){s.F=cw(s.F);const[a,b,c]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[6],s.R[3],s.R[0]];[s.R[6],s.R[3],s.R[0]]=[c,b,a];}
+function B_cw(s){s.B=cw(s.B);const[a,b,c]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[0],s.L[3],s.L[6]];[s.L[0],s.L[3],s.L[6]]=[c,b,a];}
+function R_cw(s){s.R=cw(s.R);const[a,b,c]=[s.F[2],s.F[5],s.F[8]];[s.F[2],s.F[5],s.F[8]]=[s.D[2],s.D[5],s.D[8]];[s.D[2],s.D[5],s.D[8]]=[s.B[2],s.B[5],s.B[8]];[s.B[2],s.B[5],s.B[8]]=[s.U[2],s.U[5],s.U[8]];[s.U[2],s.U[5],s.U[8]]=[a,b,c];}
+function L_cw(s){s.L=cw(s.L);const[a,b,c]=[s.F[0],s.F[3],s.F[6]];[s.F[0],s.F[3],s.F[6]]=[s.U[0],s.U[3],s.U[6]];[s.U[0],s.U[3],s.U[6]]=[s.B[0],s.B[3],s.B[6]];[s.B[0],s.B[3],s.B[6]]=[s.D[0],s.D[3],s.D[6]];[s.D[0],s.D[3],s.D[6]]=[a,b,c];}
+const MF={'U':s=>U_cw(s),"U'":s=>{U_cw(s);U_cw(s);U_cw(s);},'U2':s=>{U_cw(s);U_cw(s);},'D':s=>{D_cw(s);D_cw(s);D_cw(s);},"D'":s=>D_cw(s),'D2':s=>{D_cw(s);D_cw(s);},'F':s=>F_cw(s),"F'":s=>{F_cw(s);F_cw(s);F_cw(s);},'F2':s=>{F_cw(s);F_cw(s);},'B':s=>B_cw(s),"B'":s=>{B_cw(s);B_cw(s);B_cw(s);},'B2':s=>{B_cw(s);B_cw(s);},'R':s=>R_cw(s),"R'":s=>{R_cw(s);R_cw(s);R_cw(s);},'R2':s=>{R_cw(s);R_cw(s);},'L':s=>L_cw(s),"L'":s=>{L_cw(s);L_cw(s);L_cw(s);},'L2':s=>{L_cw(s);L_cw(s);}};
+const AM=Object.keys(MF);
+function ap(s,m){const n=clone(s);MF[m](n);return n;}
+function solved(s){return FACES.every(f=>{const c=s[f][4];return s[f].every(v=>v===c);});}
+function h(s){let w=0;for(const f of FACES){const c=s[f][4];for(let i=0;i<9;i++)if(s[f][i]!==c)w++;}return Math.ceil(w/8);}
+const FI={};['U',"U'",'U2'].forEach(m=>FI[m]=0);['D',"D'",'D2'].forEach(m=>FI[m]=1);['F',"F'",'F2'].forEach(m=>FI[m]=2);['B',"B'",'B2'].forEach(m=>FI[m]=3);['R',"R'",'R2'].forEach(m=>FI[m]=4);['L',"L'",'L2'].forEach(m=>FI[m]=5);
+let _s,_d;
+function ida(s,g,b,p,lf){if(Date.now()>_d)return 9999;const f=g+h(s);if(f>b)return f;if(solved(s)){_s=[...p];return -1;}if(g>=30)return f;let mn=Infinity;for(const m of AM){if(FI[m]===lf)continue;p.push(m);const t=ida(ap(s,m),g+1,b,p,FI[m]);p.pop();if(t===-1)return -1;if(t<mn)mn=t;}return mn;}
+function idaSolve(s,ms){_s=null;_d=Date.now()+ms;if(solved(s))return[];let b=h(s);while(b<=30){const t=ida(s,0,b,[],-1);if(t===-1)return _s;if(t===9999)return null;b=t===Infinity||t===b?b+1:t;}return null;}
+function greedy(s){const mv=[];let cur=clone(s),stuck=0;for(let i=0;i<5000;i++){if(solved(cur))return mv;let bM=null,bH=h(cur);for(const m of AM){const hv=h(ap(cur,m));if(hv<bH){bH=hv;bM=m;}}if(bM){mv.push(bM);cur=ap(cur,bM);stuck=0;}else{stuck++;const nr=stuck>10?5:1;for(let r=0;r<nr;r++){const rm=AM[Math.floor(Math.random()*AM.length)];mv.push(rm);cur=ap(cur,rm);}}}return solved(cur)?mv:null;}
+self.onmessage=function(e){const s=e.data;if(solved(s)){self.postMessage({solution:[]});return;}const sol=idaSolve(s,5000);if(sol!==null){self.postMessage({solution:sol});return;}const g=greedy(s);if(g!==null){self.postMessage({solution:g});return;}self.postMessage({error:'Could not solve.'});};
 `;
-
-let solveWorker = null;
-
+let worker=null;
 window.solveCube = async function() {
   if (isSolved()) { showToast('Already solved!'); return; }
-
   const btn = document.getElementById('solveBtn');
-  btn.disabled = true;
-  btn.classList.add('solving');
-  btn.textContent = '⏳ Solving…';
-  showToast('Calculating solution…');
-
-  if (solveWorker) { solveWorker.terminate(); solveWorker = null; }
-
-  const blob = new Blob([WORKER_SRC], {type:'application/javascript'});
-  const url  = URL.createObjectURL(blob);
-  solveWorker = new Worker(url);
-  URL.revokeObjectURL(url);
-
-  const snapshot = clone(state);
-
-  const solution = await new Promise((resolve, reject) => {
-    solveWorker.onmessage = e => {
-      solveWorker.terminate(); solveWorker = null;
-      if (e.data.error) reject(new Error(e.data.error));
-      else resolve(e.data.solution);
-    };
-    solveWorker.onerror = err => {
-      solveWorker.terminate(); solveWorker = null;
-      reject(err);
-    };
-    solveWorker.postMessage(snapshot);
+  btn.disabled=true; btn.classList.add('solving'); btn.textContent='⏳ Solving…';
+  showToast('Calculating…');
+  if (worker) { worker.terminate(); worker=null; }
+  worker = new Worker(URL.createObjectURL(new Blob([W],{type:'application/javascript'})));
+  const snap = clone(state);
+  const sol = await new Promise((res,rej)=>{
+    worker.onmessage = e => { worker.terminate(); worker=null;
+      e.data.error ? rej(new Error(e.data.error)) : res(e.data.solution); };
+    worker.onerror  = err => { worker.terminate(); worker=null; rej(err); };
+    worker.postMessage(snap);
   }).catch(err => {
-    showToast(err.message || 'Could not solve — try resetting.');
-    btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★  SOLVE';
-    return null;
+    showToast(err.message||'Could not solve.'); btn.disabled=false;
+    btn.classList.remove('solving'); btn.textContent='★ SOLVE'; return null;
   });
-
-  if (!solution) return;
-  if (solution.length === 0) {
-    showToast('Already solved!');
-    btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★  SOLVE';
-    return;
+  if (!sol) return;
+  if (!sol.length) { showToast('Already solved!'); btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★ SOLVE'; return; }
+  showToast(`Solution: ${sol.length} moves!`);
+  btn.textContent = `▶ ${sol.length} moves…`;
+  for (let i=0; i<sol.length; i++) {
+    await new Promise(r=>setTimeout(r,750));
+    await doMove(sol[i]);
+    btn.textContent = i<sol.length-1 ? `▶ ${sol.length-i-1} left…` : '★ SOLVE';
   }
-
-  const n = solution.length;
-  showToast(`Solution: ${n} moves — watch!`);
-  btn.textContent = `▶ ${n} moves…`;
-
-  for (let i = 0; i < solution.length; i++) {
-    await new Promise(r => setTimeout(r, 750));
-    await doMove(solution[i]);
-    btn.textContent = i < solution.length-1 ? `▶ ${solution.length-i-1} left…` : '★  SOLVE';
-  }
-
-  btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★  SOLVE';
+  btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★ SOLVE';
 };
-
 })();
-
 </script>
 </body>
 </html>
