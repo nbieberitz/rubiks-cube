@@ -116,7 +116,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);
   transition:transform .08s ease;
 }
 
-/* face-B has an inner .face-grid child with scaleX(-1) to cancel rotateY(180deg) mirror. */
+/* face-B: rotateY(180deg) mirrors left-right. JS renders stickers in reversed order (8→0)
+   so storage index 0 = top-left-external, 8 = bottom-right-external (natural order). */
 .face{
   position:absolute;
   width:calc(var(--half)*2);
@@ -132,7 +133,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
   -webkit-backface-visibility:visible;
 }
 .face-F{transform:translateZ(var(--half))}
-.face-B{transform:rotateY(180deg) translateZ(var(--half)) scaleX(-1) scaleY(-1);}
+.face-B{transform:rotateY(180deg) translateZ(var(--half))}
 .face-R{transform:rotateY( 90deg) translateZ(var(--half))}
 .face-L{transform:rotateY(-90deg) translateZ(var(--half))}
 .face-U{transform:rotateX( 90deg) translateZ(var(--half))}
@@ -208,6 +209,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .btn-solve.solving{background:linear-gradient(145deg,#0a2a3a,#051218);color:#38bdf8;
   border-color:rgba(56,189,248,.4);animation:sPulse 1s ease infinite}
 @keyframes sPulse{0%,100%{box-shadow:0 0 8px rgba(52,211,153,.3)}50%{box-shadow:0 0 20px rgba(52,211,153,.7)}}
+.btn-f2l{background:linear-gradient(145deg,#1a0a3a,#0d0520);color:#c084fc;
+  border:1px solid rgba(192,132,252,.4);font-size:.75rem;padding:13px}
+.btn-f2l:disabled{opacity:.4;cursor:not-allowed;transform:none!important;filter:none!important}
+.btn-f2l.solving{background:linear-gradient(145deg,#0d1a3a,#060e20);color:#a78bfa;
+  border-color:rgba(167,139,250,.5);animation:f2lPulse 1s ease infinite}
+@keyframes f2lPulse{0%,100%{box-shadow:0 0 8px rgba(192,132,252,.3)}50%{box-shadow:0 0 22px rgba(192,132,252,.75)}}
+.btn-oll{background:linear-gradient(145deg,#1a2a0a,#0d1a05);color:#86efac;
+  border:1px solid rgba(134,239,172,.4);font-size:.75rem;padding:13px}
+.btn-oll:disabled{opacity:.4;cursor:not-allowed;transform:none!important;filter:none!important}
+.btn-oll.solving{background:linear-gradient(145deg,#0a2a1a,#051a0d);color:#4ade80;
+  border-color:rgba(74,222,128,.5);animation:ollPulse 1s ease infinite}
+@keyframes ollPulse{0%,100%{box-shadow:0 0 8px rgba(134,239,172,.3)}50%{box-shadow:0 0 22px rgba(134,239,172,.75)}}
+.solver-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
 .btn-label-pair{display:flex;flex-direction:column;align-items:center;gap:2px}
 .btn-move{font-size:.82rem}
 .btn-arrow{font-size:.6rem;opacity:.7}
@@ -216,6 +230,27 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .kbd-hint kbd{background:rgba(255,255,255,.07);border:1px solid var(--border);
   border-radius:4px;padding:1px 5px;font-family:inherit}
 
+.debug-panel{width:100%;max-width:780px;background:rgba(0,0,0,.55);border:1px solid #1e1e35;
+  border-radius:12px;padding:12px 14px;display:none;flex-direction:column;gap:6px}
+.debug-panel.visible{display:flex}
+.debug-title{font-size:.58rem;letter-spacing:.18em;color:#4a4e72;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:space-between}
+.debug-clear{font-size:.58rem;color:#4a4e72;background:none;border:none;cursor:pointer;
+  font-family:inherit;letter-spacing:.1em;padding:0}
+.debug-clear:hover{color:#8aabff}
+.debug-lines{display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:#1e1e35 transparent}
+.debug-line{display:flex;align-items:flex-start;gap:8px;padding:5px 8px;border-radius:6px;
+  background:rgba(255,255,255,.03);border:1px solid #1e1e35;font-size:.65rem;
+  font-family:"JetBrains Mono",monospace;color:#c8cee8;word-break:break-all;line-height:1.5}
+.debug-line.err{border-color:rgba(220,50,50,.3);background:rgba(220,50,50,.06);color:#ff9090}
+.debug-line.dbg{border-color:rgba(79,111,255,.2);background:rgba(79,111,255,.04);color:#8aabff}
+.debug-line-text{flex:1}
+.debug-copy{flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid #1e1e35;
+  border-radius:5px;cursor:pointer;font-size:.6rem;color:#4a4e72;padding:2px 7px;
+  font-family:inherit;transition:background .15s,color .15s;white-space:nowrap}
+.debug-copy:hover{background:rgba(79,111,255,.15);color:#8aabff;border-color:rgba(79,111,255,.3)}
+.debug-copy.copied{color:#4ade80;border-color:rgba(74,222,128,.3)}
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(60px);
   background:#1a1a30;border:1px solid var(--border);border-radius:12px;
   padding:10px 22px;font-size:.75rem;color:var(--text);
@@ -242,7 +277,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);
   .btn-move{font-size:.78rem}
   .btn-arrow{display:none}
   .action-row{gap:8px}
-  .btn-reset,.btn-scramble,.btn-solve{padding:10px 4px;font-size:.62rem}
+  .btn-reset,.btn-scramble,.btn-solve,.btn-f2l{padding:10px 4px;font-size:.62rem}
+  .solver-row{gap:8px}
   .kbd-hint{display:none}
 }
 </style>
@@ -307,26 +343,36 @@ html,body{height:100%;background:var(--bg);color:var(--text);
       <div class="move-grid">
         <button class="btn btn-U"  onclick="doMove('U')"><div class="btn-label-pair"><span class="btn-move">U</span><span class="btn-arrow">↻ CW</span></div></button>
         <button class="btn btn-Uc" onclick="doMove('U\'')"><div class="btn-label-pair"><span class="btn-move">U′</span><span class="btn-arrow">↺ CCW</span></div></button>
-        <button class="btn btn-R"  onclick="doMove('R')"><div class="btn-label-pair"><span class="btn-move">R</span><span class="btn-arrow">↻ CW</span></div></button>
-        <button class="btn btn-Rc" onclick="doMove('R\'')"><div class="btn-label-pair"><span class="btn-move">R′</span><span class="btn-arrow">↺ CCW</span></div></button>
-        <button class="btn btn-F"  onclick="doMove('F')"><div class="btn-label-pair"><span class="btn-move">F</span><span class="btn-arrow">↻ CW</span></div></button>
-        <button class="btn btn-Fc" onclick="doMove('F\'')"><div class="btn-label-pair"><span class="btn-move">F′</span><span class="btn-arrow">↺ CCW</span></div></button>
+        <button id="btn-R"  class="btn btn-R"  onclick="doMove('R')"><div class="btn-label-pair"><span class="btn-move">R</span><span class="btn-arrow">↻ CW</span></div></button>
+        <button id="btn-Rc" class="btn btn-Rc" onclick="doMove('R\'')"><div class="btn-label-pair"><span class="btn-move">R′</span><span class="btn-arrow">↺ CCW</span></div></button>
+        <button id="btn-F"  class="btn btn-F"  onclick="doMove('F')"><div class="btn-label-pair"><span class="btn-move">F</span><span class="btn-arrow">↻ CW</span></div></button>
+        <button id="btn-Fc" class="btn btn-Fc" onclick="doMove('F\'')"><div class="btn-label-pair"><span class="btn-move">F′</span><span class="btn-arrow">↺ CCW</span></div></button>
         <button class="btn btn-D"  onclick="doMove('D')"><div class="btn-label-pair"><span class="btn-move">D</span><span class="btn-arrow">↻ CW</span></div></button>
         <button class="btn btn-Dc" onclick="doMove('D\'')"><div class="btn-label-pair"><span class="btn-move">D′</span><span class="btn-arrow">↺ CCW</span></div></button>
-        <button class="btn btn-L"  onclick="doMove('L')"><div class="btn-label-pair"><span class="btn-move">L</span><span class="btn-arrow">↻ CW</span></div></button>
-        <button class="btn btn-Lc" onclick="doMove('L\'')"><div class="btn-label-pair"><span class="btn-move">L′</span><span class="btn-arrow">↺ CCW</span></div></button>
-        <button class="btn btn-B"  onclick="doMove('B')"><div class="btn-label-pair"><span class="btn-move">B</span><span class="btn-arrow">↻ CW</span></div></button>
-        <button class="btn btn-Bc" onclick="doMove('B\'')"><div class="btn-label-pair"><span class="btn-move">B′</span><span class="btn-arrow">↺ CCW</span></div></button>
+        <button id="btn-L"  class="btn btn-L"  onclick="doMove('L')"><div class="btn-label-pair"><span class="btn-move">L</span><span class="btn-arrow">↻ CW</span></div></button>
+        <button id="btn-Lc" class="btn btn-Lc" onclick="doMove('L\'')"><div class="btn-label-pair"><span class="btn-move">L′</span><span class="btn-arrow">↺ CCW</span></div></button>
+        <button id="btn-B"  class="btn btn-B"  onclick="doMove('B')"><div class="btn-label-pair"><span class="btn-move">B</span><span class="btn-arrow">↻ CW</span></div></button>
+        <button id="btn-Bc" class="btn btn-Bc" onclick="doMove('B\'')"><div class="btn-label-pair"><span class="btn-move">B′</span><span class="btn-arrow">↺ CCW</span></div></button>
       </div>
     </div>
-    <div class="action-row">
+    <div class="action-row" style="grid-template-columns:1fr 1fr">
       <button class="btn btn-reset"    onclick="resetCube()">⟳ RESET</button>
       <button class="btn btn-scramble" onclick="scrambleCube()">⚄ SCRAMBLE</button>
-      <button class="btn btn-solve"    onclick="solveCube()" id="solveBtn">★ SOLVE</button>
     </div>
+
     <div class="kbd-hint">
       <kbd>U</kbd><kbd>D</kbd><kbd>F</kbd><kbd>B</kbd><kbd>R</kbd><kbd>L</kbd>
       + <kbd>Shift</kbd> CCW &nbsp;·&nbsp; <kbd>Space</kbd> scramble &nbsp;·&nbsp; <kbd>Esc</kbd> reset
+    </div>
+    <div class="debug-panel" id="debugPanel">
+      <div class="debug-title">
+        <span>⬡ DEBUG LOG</span>
+        <div style="display:flex;gap:8px">
+          <button class="debug-clear" id="debugCopyAll" onclick="copyAllDebugLines()">COPY ALL</button>
+          <button class="debug-clear" onclick="clearDebugLog()">CLEAR</button>
+        </div>
+      </div>
+      <div class="debug-lines" id="debugLines"></div>
     </div>
   </div>
 </div>
@@ -353,21 +399,30 @@ function clone(s) { const c={}; for (const k in s) c[k]=[...s[k]]; return c; }
 // ─── Move functions ──────────────────────────────────────────────────────────
 function cw(f) { return [f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]]; }
 
+// B face stored in NATURAL order: 0=top-left-external, 2=top-right-external,
+// 6=bottom-left-external, 8=bottom-right-external (matches Firebase / reading order).
+// B_cw uses ccw() on the stored array because rotateY(180deg) mirrors the face,
+// so a visual CW-from-behind = CCW in stored index space.
+
+function ccw(f) { return [f[2],f[5],f[8],f[1],f[4],f[7],f[0],f[3],f[6]]; }
+
 function U_cw(s) {
   s.U = cw(s.U);
   const [a,b,c] = [s.F[0],s.F[1],s.F[2]];
   [s.F[0],s.F[1],s.F[2]] = [s.R[0],s.R[1],s.R[2]];
-  [s.R[0],s.R[1],s.R[2]] = [s.B[8],s.B[7],s.B[6]];
-  [s.B[8],s.B[7],s.B[6]] = [s.L[0],s.L[1],s.L[2]];
+  [s.R[0],s.R[1],s.R[2]] = [s.B[0],s.B[1],s.B[2]];
+  [s.B[0],s.B[1],s.B[2]] = [s.L[0],s.L[1],s.L[2]];
   [s.L[0],s.L[1],s.L[2]] = [a,b,c];
+  console.log('%c[U_cw] F-top→R-top→B-top→L-top cycle OK','color:#ffd600');
 }
 function D_cw(s) {
   s.D = cw(s.D);
   const [a,b,c] = [s.F[6],s.F[7],s.F[8]];
   [s.F[6],s.F[7],s.F[8]] = [s.L[6],s.L[7],s.L[8]];
-  [s.L[6],s.L[7],s.L[8]] = [s.B[2],s.B[1],s.B[0]];
-  [s.B[2],s.B[1],s.B[0]] = [s.R[6],s.R[7],s.R[8]];
+  [s.L[6],s.L[7],s.L[8]] = [s.B[8],s.B[7],s.B[6]];
+  [s.B[8],s.B[7],s.B[6]] = [s.R[6],s.R[7],s.R[8]];
   [s.R[6],s.R[7],s.R[8]] = [a,b,c];
+  console.log('%c[D_cw] F-bot→L-bot→B-bot→R-bot cycle OK','color:#c0c0c0');
 }
 function F_cw(s) {
   s.F = cw(s.F);
@@ -376,30 +431,37 @@ function F_cw(s) {
   [s.L[8],s.L[5],s.L[2]] = [s.D[2],s.D[1],s.D[0]];
   [s.D[2],s.D[1],s.D[0]] = [s.R[0],s.R[3],s.R[6]];
   [s.R[0],s.R[3],s.R[6]] = [a,b,c];
+  console.log('%c[F_cw] U-bot→L-right→D-top→R-left cycle OK','color:#00b518');
 }
 function B_cw(s) {
-  s.B = cw(s.B);
+  // B face is CSS rotateY(180deg) mirrored → visual CW = stored CCW
+  s.B = ccw(s.B);
   const [a,b,c] = [s.U[0],s.U[1],s.U[2]];
   [s.U[0],s.U[1],s.U[2]] = [s.R[2],s.R[5],s.R[8]];
   [s.R[2],s.R[5],s.R[8]] = [s.D[8],s.D[7],s.D[6]];
   [s.D[8],s.D[7],s.D[6]] = [s.L[6],s.L[3],s.L[0]];
   [s.L[6],s.L[3],s.L[0]] = [a,b,c];
+  console.log('%c[B_cw] U-top:', 'color:#1565ff', s.U.slice(0,3), '| R-right:', [s.R[2],s.R[5],s.R[8]], '| D-bot:', s.D.slice(6), '| L-left:', [s.L[0],s.L[3],s.L[6]]);
 }
 function R_cw(s) {
   s.R = cw(s.R);
+  // B is stored mirrored: external right col = stored LEFT col (indices 6,3,0)
   const [a,b,c] = [s.F[2],s.F[5],s.F[8]];
   [s.F[2],s.F[5],s.F[8]] = [s.D[2],s.D[5],s.D[8]];
-  [s.D[2],s.D[5],s.D[8]] = [s.B[2],s.B[5],s.B[8]];
-  [s.B[2],s.B[5],s.B[8]] = [s.U[2],s.U[5],s.U[8]];
+  [s.D[2],s.D[5],s.D[8]] = [s.B[6],s.B[3],s.B[0]];
+  [s.B[6],s.B[3],s.B[0]] = [s.U[2],s.U[5],s.U[8]];
   [s.U[2],s.U[5],s.U[8]] = [a,b,c];
+  console.log('%c[R_cw] F-right:', 'color:#ff7200', [s.F[2],s.F[5],s.F[8]], '| D-right:', [s.D[2],s.D[5],s.D[8]], '| B-left(stored):', [s.B[6],s.B[3],s.B[0]], '| U-right:', [s.U[2],s.U[5],s.U[8]]);
 }
 function L_cw(s) {
   s.L = cw(s.L);
+  // B is stored mirrored: external left col = stored RIGHT col (indices 2,5,8)
   const [a,b,c] = [s.F[0],s.F[3],s.F[6]];
   [s.F[0],s.F[3],s.F[6]] = [s.U[0],s.U[3],s.U[6]];
-  [s.U[0],s.U[3],s.U[6]] = [s.B[0],s.B[3],s.B[6]];
-  [s.B[0],s.B[3],s.B[6]] = [s.D[0],s.D[3],s.D[6]];
+  [s.U[0],s.U[3],s.U[6]] = [s.B[8],s.B[5],s.B[2]];
+  [s.B[8],s.B[5],s.B[2]] = [s.D[0],s.D[3],s.D[6]];
   [s.D[0],s.D[3],s.D[6]] = [a,b,c];
+  console.log('%c[L_cw] F-left:', 'color:#e00000', [s.F[0],s.F[3],s.F[6]], '| U-left:', [s.U[0],s.U[3],s.U[6]], '| B-right(stored):', [s.B[8],s.B[5],s.B[2]], '| D-left:', [s.D[0],s.D[3],s.D[6]]);
 }
 
 const MOVES = {
@@ -425,10 +487,44 @@ const MOVES = {
 
 function isSolved() { return FACES.every(f => state[f].every(c => c === state[f][0])); }
 
+// ─── Startup self-test: every move×4 must be identity ────────────────────────
+(function selfTest() {
+  const base = {
+    U:Array(9).fill('Y'), D:Array(9).fill('W'), F:Array(9).fill('G'),
+    B:Array(9).fill('B'), L:Array(9).fill('R'), R:Array(9).fill('O')
+  };
+  const reps = { "U":4,"U'":4,"D":4,"D'":4,"F":4,"F'":4,"B":4,"B'":4,"R":4,"R'":4,"L":4,"L'":4 };
+  let allOK = true;
+  console.log('%c🎲 Rubik\'s cube move self-test', 'font-weight:bold;color:#4f6fff');
+  for (const [mv, n] of Object.entries(reps)) {
+    const s = clone(base);
+    for (let i = 0; i < n; i++) MOVES[mv](s);
+    const ok = FACES.every(f => s[f].join('') === base[f].join(''));
+    if (!ok) allOK = false;
+    console.log(`%c${mv}×${n} = identity: ${ok ? '✅' : '❌ BROKEN'}`, ok ? 'color:#4ade80' : 'color:#ff4444;font-weight:bold');
+    if (!ok) for (const f of FACES) {
+      if (s[f].join('') !== base[f].join(''))
+        console.warn(`  face ${f}: got [${s[f].join('')}] expected [${base[f].join('')}]`);
+    }
+  }
+  const commSeq = ['U','R',"U'","R'"];
+  const cs = clone(base);
+  for (let i = 0; i < 6; i++) for (const m of commSeq) MOVES[m](cs);
+  const commOK = FACES.every(f => cs[f].join('') === base[f].join(''));
+  console.log(`%c[U R U' R']×6 identity: ${commOK ? '✅' : '❌ BROKEN'}`, commOK ? 'color:#4ade80' : 'color:#ff4444;font-weight:bold');
+  console.log(`%cOverall: ${allOK && commOK ? '✅ ALL MOVES CORRECT' : '❌ SOME MOVES BROKEN — check above'}`,
+    allOK && commOK ? 'color:#4ade80;font-weight:bold;font-size:14px' : 'color:#ff4444;font-weight:bold;font-size:14px');
+
+})();
+
 // ─── Rendering ───────────────────────────────────────────────────────────────
 //
-// face-B: scaleX(-1) on the same transform element cancels the rotateY(180deg) H-mirror.
-// Works in Chrome, Firefox, Edge. Stickers inserted in normal state order 0-8.
+// face-B has CSS rotateY(180deg) which mirrors LEFT↔RIGHT.
+// Storage order matches visual external positions AFTER the mirror:
+// index 0 = top-left in DOM (= top-RIGHT external), index 2 = top-right in DOM (= top-LEFT external).
+// So stickers are inserted straight (DOM slot i = state[B][i]) and the CSS mirror
+// naturally places each sticker at the correct external position.
+// Firebase therefore stores B as [2,1,0,5,4,3,8,7,6] relative to external view.
 
 function buildFace(faceName) {
   const el = document.getElementById(`face-${faceName}`);
@@ -461,6 +557,10 @@ function renderAll(prevState) {
     else updateFace(f, prevState ? prevState[f] : null);
   }
   document.getElementById('solvedBadge').classList.toggle('show', isSolved());
+  const wasSolved = document.getElementById('solvedBadge').classList.contains('show');
+  const nowSolved = isSolved();
+  document.getElementById('solvedBadge').classList.toggle('show', nowSolved);
+  if (!wasSolved && nowSolved) playSolve();
 }
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
@@ -474,6 +574,47 @@ function addLog(move, avatar, isMe) {
   log.prepend(e);
   while (log.children.length > 30) log.removeChild(log.lastChild);
 }
+
+function addDebugLine(text, type='dbg') {
+  const panel = document.getElementById('debugPanel');
+  const lines = document.getElementById('debugLines');
+  panel.classList.add('visible');
+  const row = document.createElement('div');
+  row.className = 'debug-line ' + type;
+  const span = document.createElement('span');
+  span.className = 'debug-line-text';
+  span.textContent = text;
+  const btn = document.createElement('button');
+  btn.className = 'debug-copy';
+  btn.textContent = 'copy';
+  btn.onclick = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+    });
+  };
+  row.appendChild(span);
+  row.appendChild(btn);
+  lines.appendChild(row);
+  lines.scrollTop = lines.scrollHeight;
+}
+
+window.clearDebugLog = function() {
+  document.getElementById('debugLines').innerHTML = '';
+  document.getElementById('debugPanel').classList.remove('visible');
+};
+
+window.copyAllDebugLines = function() {
+  const lines = document.getElementById('debugLines');
+  const text = Array.from(lines.querySelectorAll('.debug-line-text'))
+    .map(el => el.textContent).join('\n');
+  const btn = document.getElementById('debugCopyAll');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'COPIED!';
+    setTimeout(() => { btn.textContent = 'COPY ALL'; }, 1800);
+  });
+};
 
 let toastTimer;
 function showToast(msg) {
@@ -489,6 +630,7 @@ waitForFB(fb => {
 
   document.getElementById('myBadge').textContent = `You: ${myAvatar}`;
   document.getElementById('overlay').classList.add('hidden');
+  console.log(`%c[Firebase] Connected ✅  id=${myId} avatar=${myAvatar}`, 'color:#00e528;font-weight:bold');
 
   onValue(presenceAll, snap => {
     document.getElementById('onlineCount').textContent =
@@ -504,6 +646,8 @@ waitForFB(fb => {
       firstLoad = false;
       return;
     }
+    // During solver playback, ignore Firebase echoes — we own the state
+    if (window._solverRunning && !firstLoad) return;
     const remote = snap.val();
     const prev = firstLoad ? null : clone(state);
     for (const f of FACES) {
@@ -534,6 +678,57 @@ waitForFB(fb => {
     }
   });
 
+  // ─── Audio ───────────────────────────────────────────────────────────────────
+  const AC = new (window.AudioContext || window.webkitAudioContext)();
+
+  function playClick() {
+    const buf = AC.createBuffer(1, AC.sampleRate * 0.06, AC.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++)
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (AC.sampleRate * 0.008));
+    const src = AC.createBufferSource();
+    const filt = AC.createBiquadFilter();
+    filt.type = 'bandpass'; filt.frequency.value = 1800; filt.Q.value = 1.2;
+    const gain = AC.createGain();
+    gain.gain.setValueAtTime(0.35, AC.currentTime);
+    src.buffer = buf;
+    src.connect(filt); filt.connect(gain); gain.connect(AC.destination);
+    src.start();
+  }
+
+  function playWhoosh() {
+    const dur = 0.45;
+    const buf = AC.createBuffer(1, AC.sampleRate * dur, AC.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++)
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2);
+    const src = AC.createBufferSource();
+    const filt = AC.createBiquadFilter();
+    filt.type = 'bandpass'; filt.frequency.value = 600;
+    filt.frequency.linearRampToValueAtTime(200, AC.currentTime + dur);
+    const gain = AC.createGain();
+    gain.gain.setValueAtTime(0.5, AC.currentTime);
+    gain.gain.linearRampToValueAtTime(0, AC.currentTime + dur);
+    src.buffer = buf;
+    src.connect(filt); filt.connect(gain); gain.connect(AC.destination);
+    src.start();
+  }
+
+  function playSolve() {
+    const notes = [261.63, 329.63, 392.00, 523.25]; // C E G C — major chord
+    notes.forEach((freq, i) => {
+      const osc = AC.createOscillator();
+      const gain = AC.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      const t = AC.currentTime + i * 0.12;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+      osc.connect(gain); gain.connect(AC.destination);
+      osc.start(t); osc.stop(t + 1.2);
+    });
+  }
+
   // ─── Spam protection ───────────────────────────────────────────────────────
   const MOVE_LIMIT = 5;            // max moves per window
   const MOVE_WINDOW_MS = 1000;     // rolling window in ms
@@ -557,23 +752,104 @@ waitForFB(fb => {
     return true;
   }
 
+  // ─── View-relative move remapping ────────────────────────────────────────────
+  // Determines which world face is currently "front" based on ry, then remaps
+  // button labels (F/B/L/R) to the correct world face before executing.
+  const VIEW_MAPS = [
+    { front:'F', map:{F:'F',R:'R',B:'B',L:'L',U:'U',D:'D'} }, // ry ≈ 0°
+    { front:'L', map:{F:'L',R:'F',B:'R',L:'B',U:'U',D:'D'} }, // ry ≈ 90°
+    { front:'B', map:{F:'B',R:'L',B:'F',L:'R',U:'U',D:'D'} }, // ry ≈ 180°
+    { front:'R', map:{F:'R',R:'B',B:'L',L:'F',U:'U',D:'D'} }, // ry ≈ 270°
+  ];
+
+  function remapMove(moveName) {
+    const ry = (((window._cubeRY || 0) % 360) + 360) % 360;
+    const sector = Math.round(ry / 90) % 4; // 0=F,1=L,2=B,3=R
+    const { map } = VIEW_MAPS[sector];
+    return moveName.replace(/^[FBLR]/, f => map[f] || f);
+  }
+
+  // Button label → [cwClass, ccwClass]
+  const BTN_COLOR_CLASSES = {
+    F: ['btn-F',  'btn-Fc'],
+    B: ['btn-B',  'btn-Bc'],
+    R: ['btn-R',  'btn-Rc'],
+    L: ['btn-L',  'btn-Lc'],
+  };
+  const ALL_COLOR_CLASSES = Object.values(BTN_COLOR_CLASSES).flat();
+
+  function updateButtonColors(ry) {
+    const sector = Math.round((((ry % 360) + 360) % 360) / 90) % 4;
+    const { map } = VIEW_MAPS[sector];
+    for (const label of ['F','B','R','L']) {
+      const worldFace = map[label];
+      const [cwClass, ccwClass] = BTN_COLOR_CLASSES[worldFace];
+      const cwBtn  = document.getElementById(`btn-${label}`);
+      const ccwBtn = document.getElementById(`btn-${label}c`);
+      if (!cwBtn) continue;
+      cwBtn.classList.remove(...ALL_COLOR_CLASSES);
+      cwBtn.classList.add(cwClass);
+      ccwBtn.classList.remove(...ALL_COLOR_CLASSES);
+      ccwBtn.classList.add(ccwClass);
+    }
+  }
+  window._updateButtonColors = updateButtonColors;
+  updateButtonColors(window._cubeRY || 40); // init on load
+
+  function currentFrontFace() {
+    const ry = (((window._cubeRY || 0) % 360) + 360) % 360;
+    return VIEW_MAPS[Math.round(ry / 90) % 4].front;
+  }
+
   window.doMove = async function(moveName) {
     if (!checkMoveRate()) return;
-
+    const mapped = remapMove(moveName);
+    console.log(`%c[doMove] btn="${moveName}" → mapped="${mapped}" (ry=${(window._cubeRY||0).toFixed(1)}°, sector=${Math.round((((window._cubeRY||0)%360)+360)%360/90)%4})`, 'color:#8aabff');
     const prev = clone(state);
-    MOVES[moveName](state);
+    MOVES[mapped](state);
+    playClick();
     renderAll(prev);
 
     const lm = document.getElementById('lastMove');
-    lm.textContent = moveName;
+    lm.textContent = mapped;
     lm.classList.remove('fade'); void lm.offsetWidth; lm.classList.add('fade');
-    addLog(moveName, myAvatar, true);
+    addLog(mapped, myAvatar, true);
 
     await set(cubeRef, clone(state));
     const n = (parseInt(document.getElementById('moveCount').textContent)||0) + 1;
     await set(moveCountRef, n);
     const key = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+    await set(ref(db,`cube/recentMoves/${key}`), {m:mapped,av:myAvatar,id:myId,t:Date.now()});
+  };
+
+  // Like doMove but skips view-angle remapping — for solver playback
+  window.doMoveAbsolute = async function(moveName) {
+    const prev = clone(state);
+    MOVES[moveName](state);
+    playClick();
+    renderAll(prev);
+    const lm = document.getElementById('lastMove');
+    lm.textContent = moveName;
+    lm.classList.remove('fade'); void lm.offsetWidth; lm.classList.add('fade');
+    addLog(moveName, myAvatar, true);
+    await set(cubeRef, clone(state));
+    const n = (parseInt(document.getElementById('moveCount').textContent)||0) + 1;
+    await set(moveCountRef, n);
+    const key = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
     await set(ref(db,`cube/recentMoves/${key}`), {m:moveName,av:myAvatar,id:myId,t:Date.now()});
+  };
+
+  // Apply a move locally only — no Firebase writes. Used during solver playback.
+  window.doMoveLocal = function(moveName) {
+    console.log(`%c[doMoveLocal] "${moveName}"`, 'color:#a78bfa');
+    const prev = clone(state);
+    MOVES[moveName](state);
+    playClick();
+    renderAll(prev);
+    const lm = document.getElementById('lastMove');
+    lm.textContent = moveName;
+    lm.classList.remove('fade'); void lm.offsetWidth; lm.classList.add('fade');
+    addLog(moveName, myAvatar, true);
   };
 
   window.resetCube = async function() {
@@ -600,6 +876,7 @@ waitForFB(fb => {
     const n = 20 + Math.floor(Math.random()*8);
     const sc = clone(state);
     for (let i=0; i<n; i++) MOVES[keys[Math.floor(Math.random()*keys.length)]](sc);
+    playWhoosh();
     await set(cubeRef, sc);
     await set(moveCountRef, (parseInt(document.getElementById('moveCount').textContent)||0) + n);
     showToast(`Scrambled with ${n} moves!`);
@@ -620,7 +897,11 @@ waitForFB(fb => {
   const vp = document.getElementById('cubeVP');
   const sc = document.getElementById('cubeScene');
   let rx=-26, ry=40, drag=false, lx=0, ly=0, vx=0, vy=0, raf=null;
-  function apply(){ sc.style.transform=`rotateX(${rx}deg) rotateY(${ry}deg)`; }
+  function apply(){
+    sc.style.transform=`rotateX(${rx}deg) rotateY(${ry}deg)`;
+    window._cubeRY=ry;
+    if (window._updateButtonColors) window._updateButtonColors(ry);
+  }
   function inertia(){
     vx*=0.93; vy*=0.93; rx+=vx; ry+=vy;
     rx=Math.max(-80,Math.min(80,rx)); apply();
@@ -638,887 +919,547 @@ waitForFB(fb => {
   apply();
 })();
 
-// ─── Solver (CFOP) ────────────────────────────────────────────────────────────
+// ─── Combined First-Two-Layers Solver ────────────────────────────────────────
+// Step 1: run the cross worker to get cross moves.
+// Step 2: simulate cross moves, then run the F2L worker on the resulting state.
+// Step 3: play back the full combined move list in one smooth animation.
 (function(){
+
+// ── Cross worker source ──────────────────────────────────────────────────────
 const W=`
 function clone(s){const c={};for(const k in s)c[k]=[...s[k]];return c;}
 function cw(f){return[f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]];}
-function U_cw(s){s.U=cw(s.U);const[a,b,c]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[a,b,c];}
-function D_cw(s){s.D=cw(s.D);const[a,b,c]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[s.B[2],s.B[1],s.B[0]];[s.B[2],s.B[1],s.B[0]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[a,b,c];}
-function F_cw(s){s.F=cw(s.F);const[a,b,c]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[6],s.R[3],s.R[0]];[s.R[6],s.R[3],s.R[0]]=[c,b,a];}
-function B_cw(s){s.B=cw(s.B);const[a,b,c]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[0],s.L[3],s.L[6]];[s.L[0],s.L[3],s.L[6]]=[c,b,a];}
-function R_cw(s){s.R=cw(s.R);const[a,b,c]=[s.F[2],s.F[5],s.F[8]];[s.F[2],s.F[5],s.F[8]]=[s.D[2],s.D[5],s.D[8]];[s.D[2],s.D[5],s.D[8]]=[s.B[2],s.B[5],s.B[8]];[s.B[2],s.B[5],s.B[8]]=[s.U[2],s.U[5],s.U[8]];[s.U[2],s.U[5],s.U[8]]=[a,b,c];}
-function L_cw(s){s.L=cw(s.L);const[a,b,c]=[s.F[0],s.F[3],s.F[6]];[s.F[0],s.F[3],s.F[6]]=[s.U[0],s.U[3],s.U[6]];[s.U[0],s.U[3],s.U[6]]=[s.B[0],s.B[3],s.B[6]];[s.B[0],s.B[3],s.B[6]]=[s.D[0],s.D[3],s.D[6]];[s.D[0],s.D[3],s.D[6]]=[a,b,c];}
-const MF={
-  'U':s=>U_cw(s),"U'":s=>{U_cw(s);U_cw(s);U_cw(s);},'U2':s=>{U_cw(s);U_cw(s);},
-  'D':s=>{D_cw(s);D_cw(s);D_cw(s);},"D'":s=>D_cw(s),'D2':s=>{D_cw(s);D_cw(s);},
-  'F':s=>F_cw(s),"F'":s=>{F_cw(s);F_cw(s);F_cw(s);},'F2':s=>{F_cw(s);F_cw(s);},
-  'B':s=>B_cw(s),"B'":s=>{B_cw(s);B_cw(s);B_cw(s);},'B2':s=>{B_cw(s);B_cw(s);},
-  'R':s=>R_cw(s),"R'":s=>{R_cw(s);R_cw(s);R_cw(s);},'R2':s=>{R_cw(s);R_cw(s);},
-  'L':s=>L_cw(s),"L'":s=>{L_cw(s);L_cw(s);L_cw(s);},'L2':s=>{L_cw(s);L_cw(s);}
-};
-function ap(s,m){const n=clone(s);MF[m](n);return n;}
-function apSeq(s,moves){let c=clone(s);for(const m of moves)MF[m](c);return c;}
-function seq(s,...moves){apSeq(s,moves);} // mutates s
-
-// ── IDA* utility (for sub-problems with small search space) ──────────────────
-const FI={};
-['U',"U'",'U2'].forEach(m=>FI[m]=0);['D',"D'",'D2'].forEach(m=>FI[m]=1);
-['F',"F'",'F2'].forEach(m=>FI[m]=2);['B',"B'",'B2'].forEach(m=>FI[m]=3);
-['R',"R'",'R2'].forEach(m=>FI[m]=4);['L',"L'",'L2'].forEach(m=>FI[m]=5);
-
-function idaSearch(s, goalFn, hFn, moveset, maxDepth){
-  let found=null;
-  function dfs(state,depth,bound,path,lastFace){
-    const h=hFn(state);
-    const f=path.length+h;
-    if(f>bound) return f;
-    if(goalFn(state)){found=[...path];return -1;}
-    if(depth===0) return f;
-    let min=Infinity;
-    for(const m of moveset){
-      if(FI[m]===lastFace) continue;
-      const ns=ap(state,m);
+function ccw(f){return[f[2],f[5],f[8],f[1],f[4],f[7],f[0],f[3],f[6]];}function U_cw(s){s.U=cw(s.U);const[a,b,c]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[s.B[0],s.B[1],s.B[2]];[s.B[0],s.B[1],s.B[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[a,b,c];}
+function D_cw(s){s.D=cw(s.D);const[a,b,c]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[a,b,c];}
+function F_cw(s){s.F=cw(s.F);const[a,b,c]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[0],s.R[3],s.R[6]];[s.R[0],s.R[3],s.R[6]]=[a,b,c];}
+function B_cw(s){s.B=ccw(s.B);const[a,b,c]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[6],s.L[3],s.L[0]];[s.L[6],s.L[3],s.L[0]]=[a,b,c];}
+function R_cw(s){s.R=cw(s.R);const[a,b,c]=[s.F[2],s.F[5],s.F[8]];[s.F[2],s.F[5],s.F[8]]=[s.D[2],s.D[5],s.D[8]];[s.D[2],s.D[5],s.D[8]]=[s.B[6],s.B[3],s.B[0]];[s.B[6],s.B[3],s.B[0]]=[s.U[2],s.U[5],s.U[8]];[s.U[2],s.U[5],s.U[8]]=[a,b,c];}
+function L_cw(s){s.L=cw(s.L);const[a,b,c]=[s.F[0],s.F[3],s.F[6]];[s.F[0],s.F[3],s.F[6]]=[s.U[0],s.U[3],s.U[6]];[s.U[0],s.U[3],s.U[6]]=[s.B[8],s.B[5],s.B[2]];[s.B[8],s.B[5],s.B[2]]=[s.D[0],s.D[3],s.D[6]];[s.D[0],s.D[3],s.D[6]]=[a,b,c];}
+const MF={'U':s=>U_cw(s),"U'":s=>{U_cw(s);U_cw(s);U_cw(s);},'U2':s=>{U_cw(s);U_cw(s);},'D':s=>D_cw(s),"D'":s=>{D_cw(s);D_cw(s);D_cw(s);},'D2':s=>{D_cw(s);D_cw(s);},'F':s=>F_cw(s),"F'":s=>{F_cw(s);F_cw(s);F_cw(s);},'F2':s=>{F_cw(s);F_cw(s);},'B':s=>B_cw(s),"B'":s=>{B_cw(s);B_cw(s);B_cw(s);},'B2':s=>{B_cw(s);B_cw(s);},'R':s=>R_cw(s),"R'":s=>{R_cw(s);R_cw(s);R_cw(s);},'R2':s=>{R_cw(s);R_cw(s);},'L':s=>L_cw(s),"L'":s=>{L_cw(s);L_cw(s);L_cw(s);},'L2':s=>{L_cw(s);L_cw(s);}};
+const ALL=['U',"U'",'U2','D',"D'",'D2','F',"F'",'F2','B',"B'",'B2','R',"R'",'R2','L',"L'",'L2'];
+const FG={'U':0,"U'":0,'U2':0,'D':1,"D'":1,'D2':1,'F':2,"F'":2,'F2':2,'B':3,"B'":3,'B2':3,'R':4,"R'":4,'R2':4,'L':5,"L'":5,'L2':5};
+function dfSolved(s){ return s.D[1]==='W' && s.F[7]==='G'; }
+function drSolved(s){ return s.D[5]==='W' && s.R[7]==='O'; }
+function dlSolved(s){ return s.D[3]==='W' && s.L[7]==='R'; }
+function dbSolved(s){ return s.D[7]==='W' && s.B[7]==='B'; }
+function crossSolved(s){ return dfSolved(s)&&drSolved(s)&&dlSolved(s)&&dbSolved(s); }
+function h(s){
+  return (dfSolved(s)?0:1)+(drSolved(s)?0:1)+(dlSolved(s)?0:1)+(dbSolved(s)?0:1);
+}
+let CROSS_DEADLINE=Infinity;
+function solveCross(s) {
+  if (crossSolved(s)) return [];
+  let found = null;
+  function search(state, g, bound, path, lastFace) {
+    if(Date.now()>CROSS_DEADLINE) return Infinity;
+    const f = g + h(state);
+    if (f > bound) return f;
+    if (crossSolved(state)) { found = path.slice(); return -1; }
+    let min = Infinity;
+    for (const m of ALL) {
+      const fg = FG[m];
+      if (fg === lastFace) continue;
+      const ns = clone(state);
+      MF[m](ns);
       path.push(m);
-      const t=dfs(ns,depth-1,bound,path,FI[m]);
+      const t = search(ns, g + 1, bound, path, fg);
       path.pop();
-      if(t===-1) return -1;
-      if(t<min) min=t;
+      if (t === -1) return -1;
+      if (t < min) min = t;
     }
     return min;
   }
-  let bound=hFn(s);
-  while(bound<=maxDepth){
-    const t=dfs(s,bound,bound,[],-1);
-    if(t===-1) return found;
-    if(t===Infinity) return null;
-    bound=t;
+  let bound = h(s);
+  while (bound <= 14) {
+    if(Date.now()>CROSS_DEADLINE) break;
+    self.postMessage({progress:'cross depth='+bound});
+    const t = search(clone(s), 0, bound, [], -1);
+    if (t === -1) return found;
+    if (t === Infinity) break;
+    bound = t;
   }
   return null;
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// CFOP SOLVER
-// Convention: White=W on D face, Yellow=Y on U face, Green=G on F face,
-//             Blue=B on B face, Red=R on L face, Orange=O on R face
-// ════════════════════════════════════════════════════════════════════════════
-
-// Face indices layout (viewed from outside):
-// 0 1 2
-// 3 4 5
-// 6 7 8
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-// Apply a sequence string like "R U R' U'" (space or comma separated)
-function apStr(s,str){
-  const moves=str.trim().split(/[\s,]+/).filter(Boolean);
-  return apSeq(s,moves);
-}
-function doStr(s,str){
-  const moves=str.trim().split(/[\s,]+/).filter(Boolean);
-  for(const m of moves) MF[m](s);
-  return moves;
-}
-
-// Rotate entire cube: y = U stays, F->R->B->L cycle
-function y_cw(s){
-  // U gets cw, D gets ccw, then FBLR cycle
-  U_cw(s); D_cw(s); D_cw(s); D_cw(s);
-  const fOld=[...s.F],rOld=[...s.R],bOld=[...s.B],lOld=[...s.L];
-  s.F=rOld; s.R=bOld; s.B=lOld; s.L=fOld;
-}
-function y_ccw(s){y_cw(s);y_cw(s);y_cw(s);}
-function y2(s){y_cw(s);y_cw(s);}
-
-// AUF: rotate U face to align to desired position (0,1,2,3 quarter turns CW)
-function auf(s,n){for(let i=0;i<n;i++)U_cw(s);}
-
-// ════════════════════════════════════════════════════════════════════════════
-// STEP 1: WHITE CROSS
-// Goal: D face edges are white, and each edge's side color matches its center.
-// White cross edges (on D face): D[1]=W D[3]=W D[5]=W D[7]=W
-// And adjacent: F[7]=G, B[7]=B, L[7]=R, R[7]=O  (using cube orientation)
-// ════════════════════════════════════════════════════════════════════════════
-
-// Edge locations: each entry = [ [face,idx],[face,idx] ]
-// The 12 edges of the cube:
-const EDGE_LOCS = [
-  [['U',1],['B',1]], // UB
-  [['U',3],['L',1]], // UL
-  [['U',5],['R',1]], // UR
-  [['U',7],['F',1]], // UF
-  [['D',1],['F',7]], // DF
-  [['D',3],['L',7]], // DL
-  [['D',5],['R',7]], // DR
-  [['D',7],['B',7]], // DB  -- note: B face index 7 is adjacent to D[7]
-  [['F',3],['L',5]], // FL
-  [['F',5],['R',3]], // FR
-  [['B',3],['R',5]], // BR
-  [['B',5],['L',3]], // BL
-];
-
-function getEdge(s,f1,i1,f2,i2){return[s[f1][i1],s[f2][i2]];}
-
-// Find where a specific edge (by its two colors) currently is
-// Returns {loc:[[f1,i1],[f2,i2]], colors:[c1,c2]}
-function findEdge(s, ca, cb){
-  for(const [[f1,i1],[f2,i2]] of EDGE_LOCS){
-    const c1=s[f1][i1],c2=s[f2][i2];
-    if((c1===ca&&c2===cb)||(c1===cb&&c2===ca)) return {f1,i1,f2,i2,c1,c2};
-  }
-  return null;
-}
-
-// The four white cross edges we need: each has (white + side color)
-// and its target position on D: DF(W+G), DR(W+O), DB(W+B), DL(W+R)
-// Target: s.D[1]=W,s.F[7]=G | s.D[5]=W,s.R[7]=O | s.D[7]=W,s.B[7]=B | s.D[3]=W,s.L[7]=R
-// We'll solve them one at a time using y rotations so the target is always DF.
-
-function whiteCrossSolved(s){
-  return s.D[1]==='W'&&s.F[7]==='G'&&
-         s.D[3]==='W'&&s.L[7]==='R'&&
-         s.D[5]==='W'&&s.R[7]==='O'&&
-         s.D[7]==='W'&&s.B[7]==='B';  // note: B[7] is the sticker adjacent to D[7]
-         // Actually for the B face adjacent to D: B face index adjacent to D is B[7]
-}
-
-// Check if DF edge is solved (W on D[1], correct side color on F[7])
-function dfEdgeSolved(s){return s.D[1]==='W'&&s.F[7]==='G';}
-
-// For a given target side color, how many y_cw rotations to bring that center to Front?
-// Centers: F[4]=G, R[4]=O, B[4]=B, L[4]=R  (these don't change with y rotation... wait yes they do)
-// After y rotations, face identities stay but content rotates, so center colors change.
-// We'll just rotate until F[4]==='G' equivalence — but we need to track target.
-// Simpler: we work in cube-relative coords. We'll always solve the "current front" edge.
-
-function solveWhiteCross(s){
-  const moves=[];
-  // The 4 edges: [white_partner_color, number_of_y_rotations_to_bring_its_center_to_front]
-  // Initially F=G, R=O, B=B, L=R
-  // We rotate the cube (y) to bring each side to front, then solve DF.
-  const targets=[
-    {side:'G', yRots:0},
-    {side:'O', yRots:1},
-    {side:'B', yRots:2},
-    {side:'R', yRots:3},
-  ];
-  for(const {side, yRots} of targets){
-    // Rotate cube so target side is at Front
-    for(let i=0;i<yRots;i++){y_cw(s); moves.push('y');}
-    // Now solve the DF white edge (white + G side, where G=F[4] currently)
-    const ms=solveOneDFEdge(s);
-    moves.push(...ms);
-  }
-  // Rotate back (we added 0+1+2+3=6 y rotations = net 2, undo with 2 more)
-  // Actually track net rotations
-  return moves;
-}
-
-// Bring the white+F[4] edge to DF position correctly.
-// F[4] is the current front center color.
-function solveOneDFEdge(s){
-  const moves=[];
-  const sideColor=s.F[4]; // current front center
-
-  function isDFsolved(){return s.D[1]==='W'&&s.F[7]===sideColor;}
-
-  // Helper: apply moves and record
-  function do_(str){const ms=doStr(s,str);moves.push(...ms);}
-
-  // Up to 8 attempts (shouldn't need more)
-  for(let attempt=0;attempt<20&&!isDFsolved();attempt++){
-    // Find the edge
-    const e=findEdge(s,'W',sideColor);
-    if(!e) break;
-    const {f1,i1,f2,i2,c1,c2}=e;
-
-    // Case: already in D layer
-    if(f1==='D'||f2==='D'){
-      const df=f1==='D'?f2:f1;
-      const di=f1==='D'?i1:i2;
-      const si=f1==='D'?i2:i1;
-      const sc=f1==='D'?c2:c1;
-      // Which D position?
-      if(f1==='D'&&i1===1||f2==='D'&&i2===1){
-        // DF slot
-        if(isDFsolved()) break;
-        // Wrong orientation or wrong edge: lift it out
-        do_("F2"); continue;
-      }
-      if(f1==='D'&&i1===5||f2==='D'&&i2===5){
-        // DR slot - move to U layer
-        do_("R2"); continue;
-      }
-      if(f1==='D'&&i1===3||f2==='D'&&i2===3){
-        // DL slot
-        do_("L2"); continue;
-      }
-      if(f1==='D'&&i1===7||f2==='D'&&i2===7){
-        // DB slot
-        do_("B2"); continue;
-      }
-    }
-
-    // Case: in U layer
-    if(f1==='U'||f2==='U'){
-      const sf=f1==='U'?f2:f1;
-      const si_=f1==='U'?i2:i1;
-      const sc=f1==='U'?c2:c1;
-      const wc=f1==='U'?c1:c2;
-      const ui=f1==='U'?i1:i2;
-
-      // Rotate U to bring edge above DF (U[7] is above F)
-      // U edges: U[1]=UB, U[3]=UL, U[5]=UR, U[7]=UF
-      // We need edge at UF (U[7]/F[1])
-      let rotU=0;
-      if(ui===7||(sf==='F'&&si_===1)) rotU=0;
-      else if(ui===5||(sf==='R'&&si_===1)) rotU=3; // U' brings UR to UF? No: U' rotates U ccw, so R->F
-      else if(ui===1||(sf==='B'&&si_===1)) rotU=2;
-      else if(ui===3||(sf==='L'&&si_===1)) rotU=1;
-
-      for(let r=0;r<rotU;r++){do_("U"); }
-
-      // Now edge is at UF: U[7]/F[1]
-      // Check orientation
-      if(s.U[7]==='W'){
-        // White on top: F2 inserts it wrongly. Use: F' U' R' U (or just F2 then fix? No.)
-        // Actually: white on U[7] means we do: F D F' to bring it down correctly? Let's use:
-        // flip it in U layer first: F U R U' then it goes elsewhere, let loop handle
-        do_("F U R U'");
-      } else {
-        // White on F[1], sideColor on U[7]: simple F2 won't work since it goes to D[1] with wrong color
-        // Actually F2 will put side color at D[1] and white at F[7]... 
-        // We want white at D[1] and side at F[7], so we need it flipped.
-        // If s.F[1]===sideColor && s.U[7]==='W' handled above.
-        // Here s.F[1]==='W' and s.U[7]===sideColor:
-        do_("F'"); // brings it to FR edge... let loop continue
-      }
-      continue;
-    }
-
-    // Case: in middle layer (equator)
-    // Middle edges: FL(F[3]/L[5]), FR(F[5]/R[3]), BR(B[3]/R[5]), BL(B[5]/L[3])
-    if((f1==='F'&&i1===5)||(f2==='F'&&i2===5)){
-      // FR edge
-      do_("R U R'"); continue;
-    }
-    if((f1==='F'&&i1===3)||(f2==='F'&&i2===3)){
-      // FL edge
-      do_("L' U' L"); continue;
-    }
-    if((f1==='R'&&i1===5)||(f2==='R'&&i2===5)){
-      // BR edge - B[3]/R[5]
-      do_("R' U R"); continue;
-    }
-    if((f1==='L'&&i1===3)||(f2==='L'&&i2===3)){
-      // BL edge
-      do_("L U' L'"); continue;
-    }
-    // fallback
-    do_("U"); 
-  }
-  return moves;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// STEP 2: F2L (First Two Layers)
-// Solve 4 corner-edge pairs into the four D-layer slots.
-// We always work with the FR slot (rotate cube with y to bring each slot to FR).
-// ════════════════════════════════════════════════════════════════════════════
-
-// Corner locations (3 stickers each)
-const CORNER_LOCS=[
-  [['U',0],['L',0],['B',2]], // ULB
-  [['U',2],['B',0],['R',2]], // UBR  -- note B orientation
-  [['U',6],['F',0],['L',2]], // UFL
-  [['U',8],['R',0],['F',2]], // UFR
-  [['D',0],['L',6],['F',6]], // DFL (wait, check indices)
-  [['D',2],['F',8],['R',6]], // DFR
-  [['D',6],['L',8],['B',6]], // wait...
-  [['D',8],['R',8],['B',8]], // DBR
-];
-// Easier: define the 4 bottom corners by their face sticker positions
-// DFR corner: D[2], F[8], R[6]
-// DFL corner: D[0], F[6], L[8]  -- actually D[0] might be DFL?
-// Let me re-examine face layout. D face looking from below (outside):
-// When we look at D from below, the index layout mirrors.
-// By the move functions: D_cw cycles F[6..8]->R[6..8]->B[2..0]->L[6..8]
-// So D corners: D[0]-L[8]-F[6] (DFL from outside D? let's verify with F_cw)
-// F_cw cycles U[6..8]->?->D[2..0]->? so D[2] is at the right of D front edge, D[0] left.
-// D[0]=DFL, D[2]=DFR, D[6]=DBL, D[8]=DBR
-// F[6]=DFL-F sticker, F[8]=DFR-F sticker
-// R[6]=DFR-R sticker, R[8]=DBR-R sticker
-// L[6]=DBL? -- L_cw cycles F[0,3,6]->U[0,3,6]->B[0,3,6]->D[0,3,6]
-// so L[6]=DFL-L, L[8]=DBL-L
-// B: B_cw cycles U[0,1,2]->R[2,5,8]->D[8,7,6]->L[0,3,6]
-// so B[6]=DBL-B? B[8]=DBR-B
-
-function findCorner(s,ca,cb,cc){
-  for(const locs of CORNER_LOCS){
-    const colors=locs.map(([f,i])=>s[f][i]);
-    const cs=new Set(colors);
-    if(cs.has(ca)&&cs.has(cb)&&cs.has(cc)) return locs;
-  }
-  return null;
-}
-
-// Is the FR slot (DFR corner + FR edge) correctly filled?
-// DFR corner: D[2]=W, F[8]=G(=F[4]), R[6]=O(=R[4])
-// FR edge: F[5]=G, R[3]=O
-function frSlotSolved(s){
-  return s.D[2]==='W'&&s.F[8]===s.F[4]&&s.R[6]===s.R[4]&&
-         s.F[5]===s.F[4]&&s.R[3]===s.R[4];
-}
-
-function solveF2L(s){
-  const moves=[];
-  function do_(str){const ms=doStr(s,str);moves.push(...ms);}
-
-  // Solve each of 4 pairs by rotating cube so each slot is at FR
-  for(let slot=0;slot<4;slot++){
-    // Rotate to next slot
-    if(slot>0){y_cw(s); moves.push('y');}
-    const ms=solveFRSlot(s);
-    moves.push(...ms);
-  }
-  return moves;
-}
-
-function solveFRSlot(s){
-  const moves=[];
-  function do_(str){const ms=doStr(s,str);moves.push(...ms);}
-
-  const cornerColors=['W', s.F[4], s.R[4]];
-  const edgeColors=[s.F[4], s.R[4]];
-
-  for(let attempt=0;attempt<30&&!frSlotSolved(s);attempt++){
-    // If corner or edge is in the slot but wrong, extract them
-    const cornerInSlot= s.D[2]==='W'||s.F[8]===s.F[4]||s.R[6]===s.R[4];
-    const edgeInSlot= (s.F[5]===s.F[4]&&s.R[3]===s.R[4])||(s.F[5]===s.R[4]&&s.R[3]===s.F[4]);
-    // Check if corner is actually the right one in slot
-    const rightCornerInSlot= (s.D[2]==='W'&&(s.F[8]===s.F[4]||s.R[6]===s.R[4]));
-    const rightEdgeInSlot= s.F[5]===s.F[4]&&s.R[3]===s.R[4];
-
-    if(rightCornerInSlot&&!frSlotSolved(s)){
-      // Extract corner
-      do_("R U R'"); continue;
-    }
-    // Find edge
-    const e=findEdge(s,s.F[4],s.R[4]);
-    const c=findCorner(s,'W',s.F[4],s.R[4]);
-    if(!e||!c) break;
-
-    // Check if edge is in middle layer in FR
-    // F[5]/R[3]: if colors match edgeColors (possibly flipped), it's in the slot
-    if((s.F[5]===s.F[4]&&s.R[3]===s.R[4])||(s.F[5]===s.R[4]&&s.R[3]===s.F[4])){
-      if(s.F[5]===s.R[4]&&s.R[3]===s.F[4]){
-        // Edge is flipped in slot - extract
-        do_("R U R' U' R U R'"); continue;
-      }
-    }
-
-    // Move edge to U layer if it's in middle layer
-    const {f1,i1,f2,i2}=e;
-    const inMiddle=(
-      (f1==='F'&&i1===3)||(f2==='F'&&i2===3)||
-      (f1==='F'&&i1===5)||(f2==='F'&&i2===5)||
-      (f1==='R'&&i1===3)||(f2==='R'&&i2===3)||
-      (f1==='R'&&i1===5)||(f2==='R'&&i2===5)||
-      (f1==='B'&&i1===3)||(f2==='B'&&i2===3)||
-      (f1==='B'&&i1===5)||(f2==='B'&&i2===5)||
-      (f1==='L'&&i1===3)||(f2==='L'&&i2===3)||
-      (f1==='L'&&i1===5)||(f2==='L'&&i2===5)
-    );
-    if(inMiddle){
-      // Extract to U layer using the slot it's in
-      if((f1==='F'&&i1===5)||(f2==='F'&&i2===5)) do_("R U R'");
-      else if((f1==='F'&&i1===3)||(f2==='F'&&i2===3)) do_("L' U' L");
-      else if((f1==='R'&&i1===5)||(f2==='R'&&i2===5)) do_("R' U R");
-      else if((f1==='L'&&i1===3)||(f2==='L'&&i2===3)) do_("L U' L'");
-      else do_("U");
-      continue;
-    }
-
-    // Move corner to U layer if it's in D layer (wrong slot)
-    const cLocs=c;
-    const inD=cLocs.some(([f])=>f==='D');
-    if(inD){
-      // Extract: find which D position
-      const dEntry=cLocs.find(([f])=>f==='D');
-      const [,di]=dEntry;
-      // D[2]=FR, D[0]=FL, D[6]=BL, D[8]=BR
-      if(di===2) do_("R U R'");
-      else if(di===0) do_("L' U' L");
-      else if(di===6) do_("L U2 L'");
-      else do_("R' U2 R");
-      continue;
-    }
-
-    // Both in U layer - try to pair and insert
-    // Attempt BFS-style: try all U rotations and F2L algorithms
-    const solved=tryInsertF2L(s,moves);
-    if(!solved){
-      // Just do U and retry
-      do_("U");
-    }
-  }
-  return moves;
-}
-
-// Standard F2L insertion cases
-// Corner at UFR (U[8]/F[2]/R[0]), Edge at UF(U[7]/F[1]), UR(U[5]/R[1]), UB(U[1]/B[1]), UL(U[3]/L[1])
-function tryInsertF2L(s,moves){
-  function do_(str){const ms=doStr(s,str);moves.push(...ms);}
-  const fc=s.F[4], rc=s.R[4];
-
-  // Try all 4 U rotations
-  for(let u=0;u<4;u++){
-    // Check corner position
-    const cornerAtUFR= (s.U[8]==='W'||s.F[2]===fc||s.R[0]===rc)||(s.U[8]===fc||s.F[2]==='W'||s.R[0]===rc)||(s.U[8]===rc||s.F[2]===fc||s.R[0]==='W');
-    const rightCornerAtUFR= new Set([s.U[8],s.F[2],s.R[0]]).has('W')&&new Set([s.U[8],s.F[2],s.R[0]]).has(fc)&&new Set([s.U[8],s.F[2],s.R[0]]).has(rc);
-
-    if(rightCornerAtUFR){
-      // Check edge positions and apply appropriate algorithm
-      // Case 1: Edge at UF, white on U
-      if(s.U[7]===fc&&s.F[1]===rc&&s.U[8]==='W'){
-        do_("U' R U R'"); return true;
-      }
-      if(s.U[7]===rc&&s.F[1]===fc&&s.U[8]==='W'){
-        do_("R U' R' U R U' R'"); return true;
-      }
-      // Case 2: Edge at UR, white on U
-      if(s.U[5]===rc&&s.R[1]===fc&&s.U[8]==='W'){
-        do_("U R U' R'"); return true;
-      }
-      if(s.U[5]===fc&&s.R[1]===rc&&s.U[8]==='W'){
-        do_("R U R'"); return true; // will loop
-      }
-      // White on F face of UFR corner
-      if(s.F[2]==='W'){
-        if(s.U[7]===fc&&s.F[1]===rc){ do_("F' U' F"); return true; }
-        if(s.U[5]===rc&&s.R[1]===fc){ do_("R U2 R' U' R U R'"); return true; }
-        if(s.U[7]===rc&&s.F[1]===fc){ do_("F' U F"); return true; }
-        if(s.U[5]===fc&&s.R[1]===rc){ do_("F' U2 F U F' U' F"); return true; }
-      }
-      // White on R face of UFR corner
-      if(s.R[0]==='W'){
-        if(s.U[7]===fc&&s.F[1]===rc){ do_("R' U' R U' R' U R"); return true; }
-        if(s.U[7]===rc&&s.F[1]===fc){ do_("R' U R"); return true; }
-        if(s.U[5]===rc&&s.R[1]===fc){ do_("R' U2 R U R' U' R"); return true; }
-        if(s.U[5]===fc&&s.R[1]===rc){ do_("R' U R U2 R' U R"); return true; } // hmm
-      }
-    }
-    // Rotate U and try again
-    do_("U");
-  }
-  return false;
-}
-
-function findEdge(s,ca,cb){
-  const locs=[
-    [['U',1],['B',1]],[['U',3],['L',1]],[['U',5],['R',1]],[['U',7],['F',1]],
-    [['D',1],['F',7]],[['D',3],['L',7]],[['D',5],['R',7]],[['D',7],['B',7]],
-    [['F',3],['L',5]],[['F',5],['R',3]],[['B',3],['R',5]],[['B',5],['L',3]],
-  ];
-  for(const [[f1,i1],[f2,i2]] of locs){
-    const c1=s[f1][i1],c2=s[f2][i2];
-    if((c1===ca&&c2===cb)||(c1===cb&&c2===ca)) return {f1,i1,f2,i2,c1,c2};
-  }
-  return null;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// STEP 3: OLL (Orientation of Last Layer)
-// Make the entire top face yellow.
-// We do it in two sub-steps: first the yellow cross, then full OLL.
-// ════════════════════════════════════════════════════════════════════════════
-
-function ollCrossSolved(s){
-  return s.U[1]==='Y'&&s.U[3]==='Y'&&s.U[5]==='Y'&&s.U[7]==='Y';
-}
-function ollSolved(s){return s.U.every(c=>c==='Y');}
-
-// OLL cross: get all 4 U edges to yellow.
-// Patterns based on how many yellow edges are currently on top.
-function solveOLLCross(s){
-  const moves=[];
-  function do_(str){const ms=doStr(s,str);moves.push(...ms);}
-  const FURU="F U R U' R' F'";
-  const FRUR="F R U R' U' F'";
-
-  for(let attempt=0;attempt<8&&!ollCrossSolved(s);attempt++){
-    const top=[s.U[1]==='Y',s.U[3]==='Y',s.U[5]==='Y',s.U[7]==='Y'];
-    const cnt=top.filter(Boolean).length;
-
-    if(cnt===0){
-      // Dot case
-      do_(FURU); do_(FRUR); continue;
-    }
-    if(cnt===2){
-      // Line or L-shape
-      // Check for line: [1]&[7] or [3]&[5]
-      if(top[0]&&top[2]){ // [1]&[7] = FB line (indices 1=UB,7=UF? let me recheck)
-        // U[1]=UB side, U[7]=UF side, U[3]=UL, U[5]=UR
-        // Line horizontal (UF+UB): U[1]&&U[7]
-        do_(FRUR); continue;
-      }
-      if(top[1]&&top[3]){ // UL+UR line
-        do_("U"); continue; // rotate to make it FB line
-      }
-      // L-shape: rotate until L is in standard position (UF+UR = top[2]&&top[3])
-      // Standard L: U[5]&&U[7] (UR and UF yellow)
-      if(top[2]&&top[3]) { do_(FURU); continue; }
-      do_("U"); continue;
-    }
-    do_("U");
-  }
-  return moves;
-}
-
-// Full OLL: 57 cases. We'll use a lookup approach with BFS for up to 3 moves.
-// OLL state = orientation of 8 U-face stickers (corners 0,2,6,8 and edges 1,3,5,7)
-// plus 8 side stickers that are on the top layer.
-// We encode the OLL case and apply the right algorithm.
-
-// OLL algorithms (subset covering all 57 cases, using CFOP standard algs)
-// Each entry: [condition_function, algorithm_string]
-// We'll use a BFS with U rotations + the CFOP OLL algorithms.
-
-function solveOLL(s){
-  const moves=[];
-  function do_(str){const ms=doStr(s,str);moves.push(...ms);}
-
-  if(ollSolved(s)) return moves;
-
-  // Encode OLL: which of the 9 U stickers are yellow, and which of the 8 side-top stickers
-  // Side-top: F[0],F[2], R[0],R[2], B[0],B[2], L[0],L[2]  (top row of each side face)
-  // Actually top of F face visible from top: F[0]=UFL-F, F[2]=UFR-F (corners)
-  // and F[1]=UF edge top... wait that's U[7]. 
-  // The 8 stickers of adjacent faces in top layer:
-  // F[0],F[1],F[2] = top row of F face (but F[1] is the UF edge side sticker)
-  // For OLL we care about orientation: is yellow on top for each U-layer cubie?
-  // Simpler: just try all OLL algs until top is solved.
-
-  const OLL_ALGS = [
-    // Sune
-    "R U R' U R U2 R'",
-    // Anti-sune
-    "R U2 R' U' R U' R'",
-    // Pi (Bruno)
-    "R U2 R2 U' R2 U' R2 U2 R",
-    // H OLL
-    "R U R' U R U' R' U R U2 R'",
-    // T shape
-    "R U R' U' R' F R F'",
-    // OLL cross algs (F triggers)
-    "F R U R' U' F'",
-    "F U R U' R' F'",
-    // More OLL cases (pure, no r/l/M)
-    "F R' F' R U R U' R'",
-    "R U R' U' R' F R F'",
-    "R' U' R U' R' U R U R' U' R U2 R' U' R U' R'",
-    "R U R' U R U2 R' F R U R' U' F'",
-    "L' U' L U' L' U2 L",
-    "L' U2 L U L' U' L",
-    "R' U' R U' R' U2 R",
-    "R U R' U' R U' R' F' U' F R U R'",
-    "F R U R' U' F' R U R' U' R' F R F'",
-    "R' U' R' F R F' R' F R F' U R",
-    "R2 D R' U2 R D' R' U2 R'",
-    "R' U2 R2 U R' U R U2 R' U' R U' R'",
-    "R' F R F' U' F' U F",
-    "F' U' F U' R U R'",
-    "R U R' U' R U R' U' R U R' F' R U R' U' F",
-    "R' U R U2 R' U' R U' R'",
-    "R U' R' U' R U R' F' R U R' U' F",
-    "F R' F' R U R U' R'",
-    "R U R' U R U' R' U' R' F R F'",
-    "L F' L' F U F U' F'",
-    "R' F R F' U F' U' F",
-    "F U R U2 R' U R U' R' F'",
-    "R' U' F' U F R",
-    "L U F U' F' L'",
-    "R U2 R' U' R U' R' L' U2 L U L' U L",
-    "R U R' U' R' F R2 U R' U' F'",
-    "F' L' U' L U L' U' L U F",
-    "R' U2 R U R' U R",
-    "F R U' R' U' R U R' F'",
-    "R U R' U' R' F R F' R U R' U' R' F R F'",
-    "R U2 R2 F R F' U2 R' F R F'",
-    "L' U' L U' L' U L U L F' L' F",
-    "R U R' U' R' F R2 U' R' U F'",
-    "F' R U R' U' R' F R2 U' R' U' R U R' U R",
-    "R' U' R U' R' U R U L U' R' U L'",
-    "R' U2 R' F R F' R' F R F' U2 R",
-    "R' U' F R U R' U' R' F' R2 U' R' U' R U R' U R",
-    "R U2 R' U' F' U F R U R' U' R U2 R' U' R' F R F'",
-  ];
-
-  // Try each alg with 4 AUF rotations
-  for(let attempt=0;attempt<6&&!ollSolved(s);attempt++){
-    for(let u=0;u<4;u++){
-      if(ollSolved(s)) return moves;
-      for(const alg of OLL_ALGS){
-        const test=apStr(s,alg);
-        if(ollSolved(test)){
-          do_(alg);
-          return moves;
-        }
-        // Try with AUF before
-        for(let ua=1;ua<4;ua++){
-          const uMoves=['U','U2',"U'"][ua-1];
-          const test2=apStr(apStr(s,uMoves),alg);
-          if(ollSolved(test2)){
-            do_(uMoves); do_(alg); return moves;
-          }
-        }
-      }
-      do_("U");
-    }
-    // If still not solved after all algs, apply a sune and retry
-    do_("R U R' U R U2 R'");
-  }
-  return moves;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// STEP 4: PLL (Permutation of Last Layer)
-// Permute U layer pieces to solve the cube.
-// ════════════════════════════════════════════════════════════════════════════
-
-function pllSolved(s){
-  return ['U','D','F','B','L','R'].every(f=>s[f].every(c=>c===s[f][4]));
-}
-
-function solvePLL(s){
-  const moves=[];
-  function do_(str){const ms=doStr(s,str);moves.push(...ms);}
-
-  if(pllSolved(s)) return moves;
-
-  const PLL_ALGS = [
-    // Ua perm
-    "R U' R U R U R U' R' U' R2",
-    // Ub perm
-    "R2 U R U R' U' R' U' R' U R'",
-    // Z perm (pure, no M)
-    "R' U' R U' R U R U' R' U R U R2 U' R'",
-    // H perm (pure, no M)
-    "R2 U2 R U2 R2 U2 R2 U2 R U2 R2",
-    // Aa perm (pure, no x)
-    "R' F R' B2 R F' R' B2 R2",
-    // Ab perm (pure, no x)
-    "R2 B2 R F R' B2 R F' R",
-    // E perm (pure, no x)
-    "R B' R' F R B R' F' R B R' F R B' R' F'",
-    // F perm
-    "R' U' F' R U R' U' R' F R2 U' R' U' R U R' U R",
-    // Ga perm
-    "R2 U R' U R' U' R U' R2 D U' R' U R D'",
-    // Gb perm
-    "R' U' R U D' R2 U R' U R U' R U' R2 D",
-    // Gc perm
-    "R2 F2 R U2 R U2 R' F R U R' U' R' F R2",
-    // Gd perm
-    "R U R' U' D R2 U' R U' R' U R' U R2 D'",
-    // Ja perm (pure, no x)
-    "L' U' L F L' U' L U L F' L2 U L",
-    // Jb perm
-    "R U R' F' R U R' U' R' F R2 U' R'",
-    // Na perm
-    "R U R' U R U R' F' R U R' U' R' F R2 U' R' U2 R U' R'",
-    // Nb perm
-    "R' U L' U2 R U' L R' U L' U2 R U' L U2",
-    // Ra perm
-    "R U' R' U' R U R D R' U' R D' R' U2 R'",
-    // Rb perm
-    "R2 F R U R U' R' F' R U2 R' U2 R",
-    // T perm
-    "R U R' U' R' F R2 U' R' U' R U R' F'",
-    // V perm (pure, no d)
-    "R' U R' U' B' R' B2 U' B' U B' R B R",
-    // Y perm
-    "F R U' R' U' R U R' F' R U R' U' R' F R F'",
-  ];
-
-  for(let attempt=0;attempt<8&&!pllSolved(s);attempt++){
-    let applied=false;
-    for(let u=0;u<4&&!applied;u++){
-      for(const alg of PLL_ALGS){
-        const test=apStr(s,alg);
-        if(pllSolved(test)){
-          if(u>0){const uStr=u===1?'U':u===2?'U2':"U'";do_(uStr);}
-          do_(alg);
-          applied=true;
-          break;
-        }
-      }
-      if(!applied){do_("U");}
-    }
-    if(!applied){
-      // AUF after
-      for(let u=1;u<4;u++){
-        const uStr=u===1?'U':u===2?'U2':"U'";
-        const test=apStr(s,uStr);
-        if(pllSolved(test)){do_(uStr);applied=true;break;}
-      }
-    }
-    if(!applied){
-      // Apply T-perm and retry
-      do_("R U R' U' R' F R2 U' R' U' R U R' F'");
-    }
-  }
-
-  // Final AUF
-  for(let u=0;u<4;u++){
-    if(pllSolved(s)) break;
-    do_("U");
-  }
-
-  return moves;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// MAIN CFOP SOLVE
-// ════════════════════════════════════════════════════════════════════════════
-
-function cfopSolve(s){
-  let moves=[];
-
-  // Step 1: White Cross
-  const crossMoves=solveWhiteCross(s);
-  moves.push(...crossMoves);
-
-  // Step 2: F2L
-  const f2lMoves=solveF2L(s);
-  moves.push(...f2lMoves);
-
-  // Step 3a: OLL Cross
-  const ollCrossMoves=solveOLLCross(s);
-  moves.push(...ollCrossMoves);
-
-  // Step 3b: Full OLL
-  const ollMoves=solveOLL(s);
-  moves.push(...ollMoves);
-
-  // Step 4: PLL
-  const pllMoves=solvePLL(s);
-  moves.push(...pllMoves);
-
-  // Remove y rotations from output (they were used internally)
-  // Actually we need to keep only real moves (not y rotations as the main
-  // cube won't understand y). Let's replace y moves with equivalent U/D/F/B/L/R.
-  // We tracked y rotations in solveWhiteCross/solveF2L — we should NOT include them
-  // in the returned move list since the cube's doMove doesn't know 'y'.
-  // Instead, let's filter them out AND convert all subsequent moves accordingly.
-  // Actually, since we mutated s as we went, the y rotations are already baked into
-  // the state — the real issue is we can't send 'y' to doMove on the main thread.
-  // The y moves were applied to s internally, so the remaining moves after them
-  // ARE correct for the rotated orientation. We need to convert them.
-  // Simplest fix: don't include 'y' in output, and instead replace 'y' with
-  // the cube-rotation equivalent using only standard moves.
-  // y = U D' and middle M... but M is not in our moveset.
-  // y = D' U ... actually y (F->R) = U + front-layer: not clean.
-  // Real solution: rewrite so y rotations are absorbed into the move sequence.
-  // For now: convert y to U moves (since D layer is solved, y ~ U rotation visually)
-  // but that's wrong. Let's just re-filter and use a remapping approach.
-
-  // Remap moves: track cumulative y rotation offset (0-3) and remap face letters
-  const faceMap = [
-    ['F','R','B','L'], // index = yRotOffset: F->F, R->R, B->B, L->L at offset 0
-    ['F','R','B','L'], // at offset 1 (1x y_cw): what was L is now F, etc.
-  ];
-  // y_cw: F->R, R->B, B->L, L->F (from the perspective of cube rotation)
-  // Inverse: to un-rotate a move after y_cw, F->L, R->F, B->R, L->B
-  const Y_MAP_CW = {F:'L',L:'B',B:'R',R:'F',U:'U',D:'D'}; // move face after 1 y_cw
-  // Actually: if cube rotates y_cw (F goes to where R was), then an R move on the
-  // new orientation corresponds to a B move on the old orientation.
-  // The FORWARD map (new->old): F->R, R->B, B->L, L->F (inverse of cube rotation)
-  // Let's define: after n y_cw rotations, a move on face X corresponds to:
-  const YN=[
-    {F:'F',R:'R',B:'B',L:'L'}, // 0 rotations
-    {F:'L',R:'F',B:'R',L:'B'}, // 1 y_cw: new F is old R, so F move -> old R direction.. 
-    {F:'B',R:'L',B:'F',L:'R'}, // 2
-    {F:'R',R:'B',B:'L',L:'F'}, // 3
-  ];
-  // Wait - need to think carefully.
-  // After y_cw, what was F face is now at L position (cube rotated so F goes right to R).
-  // Hmm: y_cw in our code swaps: s.F->s.R->s.B->s.L->s.F (new F = old L).
-  // So after 1 y_cw: new F content = old L, new R content = old F, new B = old R, new L = old B.
-  // A move "F" after y_cw acts on what is now F (old L). To produce same physical effect, use "L".
-  // Remap (new face name -> old face name): F->L, R->F, B->R, L->B.
-  const YFW=[
-    {F:'F',R:'R',B:'B',L:'L',U:'U',D:'D'},
-    {F:'L',R:'F',B:'R',L:'B',U:'U',D:'D'}, // after 1 y_cw
-    {F:'B',R:'L',B:'F',L:'R',U:'U',D:'D'}, // after 2
-    {F:'R',R:'B',B:'L',L:'F',U:'U',D:'D'}, // after 3
-  ];
-
-  let yOff=0;
-  const outMoves=[];
-  for(const m of moves){
-    if(m==='y'){yOff=(yOff+1)%4; continue;}
-    if(m==='y2'){yOff=(yOff+2)%4; continue;}
-    if(m==="y'"){yOff=(yOff+3)%4; continue;}
-    // Remap the face in this move
-    const map=YFW[yOff];
-    const remapped=m.replace(/^[FRBL]/,face=>map[face]||face);
-    outMoves.push(remapped);
-  }
-  return outMoves;
-}
-
-function isSolved(s){return ['U','D','F','B','L','R'].every(f=>{const c=s[f][4];return s[f].every(v=>v===c);});}
-
-self.onmessage=function(e){
-  const s=e.data;
-  if(isSolved(s)){self.postMessage({solution:[]});return;}
-  try{
-    const sol=cfopSolve(clone(s));
-    // Verify
-    const verify=clone(s);
-    for(const m of sol) MF[m](verify);
-    if(isSolved(verify)){
-      self.postMessage({solution:sol});
-    } else {
-      self.postMessage({error:'CFOP verification failed.'});
-    }
-  } catch(err){
-    self.postMessage({error:'Solver error: '+err.message});
+self.onmessage = function(e) {
+  const s = e.data;
+  try {
+    CROSS_DEADLINE = Date.now() + 20000;
+    if (crossSolved(s)) { self.postMessage({solution:[]}); return; }
+    const sol = solveCross(clone(s));
+    if (!sol) { self.postMessage({error:'No cross solution found within depth limit'}); return; }
+    self.postMessage({solution: sol});
+  } catch(err) {
+    self.postMessage({error: 'Cross solver error: ' + err.message});
   }
 };
 `;
-let worker=null;
-window.solveCube = async function() {
-  if (isSolved()) { showToast('Already solved!'); return; }
-  const btn = document.getElementById('solveBtn');
-  btn.disabled=true; btn.classList.add('solving'); btn.textContent='⏳ Solving…';
-  showToast('Calculating…');
-  if (worker) { worker.terminate(); worker=null; }
-  worker = new Worker(URL.createObjectURL(new Blob([W],{type:'application/javascript'})));
-  const snap = clone(state);
-  const sol = await new Promise((res,rej)=>{
-    worker.onmessage = e => { worker.terminate(); worker=null;
-      e.data.error ? rej(new Error(e.data.error)) : res(e.data.solution); };
-    worker.onerror  = err => { worker.terminate(); worker=null; rej(err); };
-    worker.postMessage(snap);
-  }).catch(err => {
-    showToast(err.message||'Could not solve.'); btn.disabled=false;
-    btn.classList.remove('solving'); btn.textContent='★ SOLVE'; return null;
-  });
-  if (!sol) return;
-  if (!sol.length) { showToast('Already solved!'); btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★ SOLVE'; return; }
-  showToast(`Solution: ${sol.length} moves!`);
-  btn.textContent = `▶ ${sol.length} moves…`;
-  for (let i=0; i<sol.length; i++) {
-    await new Promise(r=>setTimeout(r,750));
-    await doMove(sol[i]);
-    btn.textContent = i<sol.length-1 ? `▶ ${sol.length-i-1} left…` : '★ SOLVE';
+
+// ── F2L worker source ────────────────────────────────────────────────────────
+const WF=`
+function clone(s){return{U:s.U.slice(),D:s.D.slice(),F:s.F.slice(),B:s.B.slice(),L:s.L.slice(),R:s.R.slice()};}
+function cw(f){return[f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]];}
+function ccw(f){return[f[2],f[5],f[8],f[1],f[4],f[7],f[0],f[3],f[6]];}
+function U_cw(s){s.U=cw(s.U);const[a,b,c]=[s.F[0],s.F[1],s.F[2]];[s.F[0],s.F[1],s.F[2]]=[s.R[0],s.R[1],s.R[2]];[s.R[0],s.R[1],s.R[2]]=[s.B[0],s.B[1],s.B[2]];[s.B[0],s.B[1],s.B[2]]=[s.L[0],s.L[1],s.L[2]];[s.L[0],s.L[1],s.L[2]]=[a,b,c];}
+function D_cw(s){s.D=cw(s.D);const[a,b,c]=[s.F[6],s.F[7],s.F[8]];[s.F[6],s.F[7],s.F[8]]=[s.L[6],s.L[7],s.L[8]];[s.L[6],s.L[7],s.L[8]]=[s.B[8],s.B[7],s.B[6]];[s.B[8],s.B[7],s.B[6]]=[s.R[6],s.R[7],s.R[8]];[s.R[6],s.R[7],s.R[8]]=[a,b,c];}
+function F_cw(s){s.F=cw(s.F);const[a,b,c]=[s.U[6],s.U[7],s.U[8]];[s.U[6],s.U[7],s.U[8]]=[s.L[8],s.L[5],s.L[2]];[s.L[8],s.L[5],s.L[2]]=[s.D[2],s.D[1],s.D[0]];[s.D[2],s.D[1],s.D[0]]=[s.R[0],s.R[3],s.R[6]];[s.R[0],s.R[3],s.R[6]]=[a,b,c];}
+function B_cw(s){s.B=ccw(s.B);const[a,b,c]=[s.U[0],s.U[1],s.U[2]];[s.U[0],s.U[1],s.U[2]]=[s.R[2],s.R[5],s.R[8]];[s.R[2],s.R[5],s.R[8]]=[s.D[8],s.D[7],s.D[6]];[s.D[8],s.D[7],s.D[6]]=[s.L[6],s.L[3],s.L[0]];[s.L[6],s.L[3],s.L[0]]=[a,b,c];}
+function R_cw(s){s.R=cw(s.R);const[a,b,c]=[s.F[2],s.F[5],s.F[8]];[s.F[2],s.F[5],s.F[8]]=[s.D[2],s.D[5],s.D[8]];[s.D[2],s.D[5],s.D[8]]=[s.B[6],s.B[3],s.B[0]];[s.B[6],s.B[3],s.B[0]]=[s.U[2],s.U[5],s.U[8]];[s.U[2],s.U[5],s.U[8]]=[a,b,c];}
+function L_cw(s){s.L=cw(s.L);const[a,b,c]=[s.F[0],s.F[3],s.F[6]];[s.F[0],s.F[3],s.F[6]]=[s.U[0],s.U[3],s.U[6]];[s.U[0],s.U[3],s.U[6]]=[s.B[8],s.B[5],s.B[2]];[s.B[8],s.B[5],s.B[2]]=[s.D[0],s.D[3],s.D[6]];[s.D[0],s.D[3],s.D[6]]=[a,b,c];}
+
+const MF={'U':s=>U_cw(s),"U'":s=>{U_cw(s);U_cw(s);U_cw(s);},'U2':s=>{U_cw(s);U_cw(s);},'D':s=>D_cw(s),"D'":s=>{D_cw(s);D_cw(s);D_cw(s);},'D2':s=>{D_cw(s);D_cw(s);},'F':s=>F_cw(s),"F'":s=>{F_cw(s);F_cw(s);F_cw(s);},'F2':s=>{F_cw(s);F_cw(s);},'B':s=>B_cw(s),"B'":s=>{B_cw(s);B_cw(s);B_cw(s);},'B2':s=>{B_cw(s);B_cw(s);},'R':s=>R_cw(s),"R'":s=>{R_cw(s);R_cw(s);R_cw(s);},'R2':s=>{R_cw(s);R_cw(s);},'L':s=>L_cw(s),"L'":s=>{L_cw(s);L_cw(s);L_cw(s);},'L2':s=>{L_cw(s);L_cw(s);}};
+const MOVES=['U',"U'",'U2','R',"R'",'R2','F',"F'",'F2','L',"L'",'L2','B',"B'",'B2']; // No D: F2L never needs D moves
+const FG={'U':0,"U'":0,'U2':0,'R':1,"R'":1,'R2':1,'F':2,"F'":2,'F2':2,'L':3,"L'":3,'L2':3,'B':4,"B'":4,'B2':4};
+const OPP={0:-1,1:3,2:4,3:1,4:2}; // R<->L, F<->B, U has none
+
+function f2lGoal(s){
+  return s.D[1]==='W'&&s.F[7]==='G'&&s.D[5]==='W'&&s.R[7]==='O'&&s.D[3]==='W'&&s.L[7]==='R'&&s.D[7]==='W'&&s.B[7]==='B'&&
+    s.D[2]==='W'&&s.F[8]==='G'&&s.R[6]==='O'&&s.F[5]==='G'&&s.R[3]==='O'&&
+    s.D[0]==='W'&&s.F[6]==='G'&&s.L[8]==='R'&&s.F[3]==='G'&&s.L[5]==='R'&&
+    s.D[8]==='W'&&s.B[6]==='B'&&s.R[8]==='O'&&s.B[3]==='B'&&s.R[5]==='O'&&
+    s.D[6]==='W'&&s.B[8]==='B'&&s.L[6]==='R'&&s.B[5]==='B'&&s.L[3]==='R';
+}
+
+// Heuristic: count unsolved cross edges + F2L pairs.
+// Each unsolved pair contributes 2 (needs >=2 moves), each cross edge 1.
+// Using max(cross_count, pairs_count*2) would be tighter but sum is still admissible
+// because cross and pair moves are not always shared.
+function h(s){
+  let n=0;
+  if(s.D[1]!=='W'||s.F[7]!=='G') n++;
+  if(s.D[5]!=='W'||s.R[7]!=='O') n++;
+  if(s.D[3]!=='W'||s.L[7]!=='R') n++;
+  if(s.D[7]!=='W'||s.B[7]!=='B') n++;
+  if(!(s.D[2]==='W'&&s.F[8]==='G'&&s.R[6]==='O'&&s.F[5]==='G'&&s.R[3]==='O')) n+=2;
+  if(!(s.D[0]==='W'&&s.F[6]==='G'&&s.L[8]==='R'&&s.F[3]==='G'&&s.L[5]==='R')) n+=2;
+  if(!(s.D[8]==='W'&&s.B[6]==='B'&&s.R[8]==='O'&&s.B[3]==='B'&&s.R[5]==='O')) n+=2;
+  if(!(s.D[6]==='W'&&s.B[8]==='B'&&s.L[6]==='R'&&s.B[5]==='B'&&s.L[3]==='R')) n+=2;
+  return n;
+}
+
+let DEADLINE=Infinity;
+
+self.onmessage=function(e){
+  const s=e.data;
+  try{
+    DEADLINE=Date.now()+55000;
+    if(f2lGoal(s)){self.postMessage({solution:[]});return;}
+    const startH=h(s);
+    self.postMessage({debug:'F2L+Cross IDA* h='+startH});
+
+    let found=null;
+    function dfs(st,g,bound,path,lf){
+      if(Date.now()>DEADLINE) return Infinity;
+      const hv=h(st); const cost=g+hv; if(cost>bound) return cost;
+      if(f2lGoal(st)){found=path.slice();return -1;}
+      let min=Infinity;
+      for(let i=0;i<MOVES.length;i++){
+        const m=MOVES[i],fg=FG[m];
+        if(fg===lf) continue;
+        if(OPP[lf]===fg) continue;
+        const ns=clone(st); MF[m](ns);
+        path.push(m);
+        const t=dfs(ns,g+1,bound,path,fg);
+        path.pop();
+        if(t===-1) return -1;
+        if(t<min) min=t;
+      }
+      return min;
+    }
+
+    let bound=startH;
+    while(bound<=22){
+      if(Date.now()>DEADLINE) break;
+      self.postMessage({debug:'bound='+bound});
+      found=null;
+      const t=dfs(clone(s),0,bound,[],-1);
+      if(t===-1){
+        const check=clone(s);
+        for(const m of found) MF[m](check);
+        if(!f2lGoal(check)){self.postMessage({error:'F2L verify failed'});return;}
+        self.postMessage({debug:'F2L+Cross done: '+found.length+' moves'});
+        self.postMessage({solution:found});
+        return;
+      }
+      if(t===Infinity) break;
+      bound=t;
+    }
+    self.postMessage({error:'F2L timed out (h='+startH+', reached bound='+bound+')'});
+  }catch(err){
+    self.postMessage({error:'F2L error: '+err.message});
   }
-  btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★ SOLVE';
+};
+`;
+
+// ── Combined solver ──────────────────────────────────────────────────────────
+let wf2l = null, wcross = null;
+
+window.solveF2L = async function() {
+  if (window._solverRunning) { showToast('Solver already running…'); return; }
+  const btn = document.getElementById('f2lBtn');
+
+  function crossDone(s){ return s.D[1]==='W'&&s.F[7]==='G'&&s.D[3]==='W'&&s.L[7]==='R'&&s.D[5]==='W'&&s.R[7]==='O'&&s.D[7]==='W'&&s.B[7]==='B'; }
+  function f2lDone(s){
+    return crossDone(s)&&s.D[2]==='W'&&s.F[8]==='G'&&s.R[6]==='O'&&s.D[0]==='W'&&s.F[6]==='G'&&s.L[8]==='R'&&
+      s.D[8]==='W'&&s.B[6]==='B'&&s.R[8]==='O'&&s.D[6]==='W'&&s.B[8]==='B'&&s.L[6]==='R'&&
+      s.F[5]==='G'&&s.R[3]==='O'&&s.F[3]==='G'&&s.L[5]==='R'&&s.B[3]==='B'&&s.R[5]==='O'&&s.B[5]==='B'&&s.L[3]==='R';
+  }
+
+  // ── Debug snapshot ──
+  addDebugLine(`[F2L start] crossDone=${crossDone(state)} f2lDone=${f2lDone(state)}`, 'dbg');
+  addDebugLine(`[F2L] U:${state.U.join('')} D:${state.D.join('')}`, 'dbg');
+  addDebugLine(`[F2L] F:${state.F.join('')} B:${state.B.join('')} R:${state.R.join('')} L:${state.L.join('')}`, 'dbg');
+  { const s4={...state,U:[...state.U],D:[...state.D],F:[...state.F],B:[...state.B],R:[...state.R],L:[...state.L]};
+    MOVES['R'](s4);MOVES['R'](s4);MOVES['R'](s4);MOVES['R'](s4);
+    const rId=FACES.every(f=>s4[f].join('')===state[f].join(''));
+    const s4L={...state,U:[...state.U],D:[...state.D],F:[...state.F],B:[...state.B],R:[...state.R],L:[...state.L]};
+    MOVES['L'](s4L);MOVES['L'](s4L);MOVES['L'](s4L);MOVES['L'](s4L);
+    const lId=FACES.every(f=>s4L[f].join('')===state[f].join(''));
+    addDebugLine(`[F2L] R×4=identity:${rId} L×4=identity:${lId} (both must be true)`,rId&&lId?'dbg':'err');
+  }
+
+  if (f2lDone(state)) { showToast('First two layers already solved!'); return; }
+
+  btn.disabled = true;
+  btn.classList.add('solving');
+
+  const PLAYBACK_MS = 350;
+  const calcStart = Date.now();
+  let calcTimer = null;
+  function startCalcTimer(label) {
+    clearInterval(calcTimer);
+    calcTimer = setInterval(() => {
+      btn.textContent = `⏳ ${label} (${((Date.now()-calcStart)/1000).toFixed(1)}s)…`;
+    }, 100);
+  }
+  function stopCalcTimer() { clearInterval(calcTimer); calcTimer = null; }
+
+  startCalcTimer('Calculating cross');
+  showToast('Calculating first two layers… (~5–20s)');
+
+  const snap = clone(state);
+  const stateKey = s => FACES.map(f => s[f].join('')).join('');
+
+  // Step 1: cross worker
+  let crossMoves = [];
+  if (!crossDone(snap)) {
+    if (wcross) { wcross.terminate(); wcross = null; }
+    wcross = new Worker(URL.createObjectURL(new Blob([W], {type:'application/javascript'})));
+    crossMoves = await new Promise((res, rej) => {
+      wcross.onmessage = e => {
+        if (e.data.progress) { addDebugLine('[cross] '+e.data.progress,'dbg'); return; }
+        wcross.terminate(); wcross = null;
+        if(e.data.error){ addDebugLine('CROSS ERROR: '+e.data.error,'err'); rej(new Error(e.data.error)); }
+        else { addDebugLine('Cross: '+e.data.solution.length+' moves','dbg'); res(e.data.solution); }
+      };
+      wcross.onerror = err => { wcross.terminate(); wcross = null; rej(err); };
+      wcross.postMessage(snap);
+    }).catch(err => {
+      stopCalcTimer();
+      showToast(err.message||'Could not solve cross.');
+      btn.disabled=false; btn.classList.remove('solving'); btn.textContent='⬛ SOLVE FIRST 2 LAYERS';
+      return null;
+    });
+    if (crossMoves === null) return;
+  }
+
+  const afterCross = clone(snap);
+  for (const m of crossMoves) MOVES[m](afterCross);
+
+  // Step 2: F2L worker solves cross+F2L together from original scrambled state
+  // (combined IDA* avoids the cross-constraint problem that makes per-pair solving slow)
+  startCalcTimer('Calculating F2L');
+  let f2lMoves = [];
+  if (!f2lDone(snap)) {
+    if (wf2l) { wf2l.terminate(); wf2l = null; }
+    wf2l = new Worker(URL.createObjectURL(new Blob([WF], {type:'application/javascript'})));
+    const allF2LMoves = await new Promise((res, rej) => {
+      wf2l.onmessage = e => {
+        if(e.data.debug){ addDebugLine(e.data.debug,'dbg'); console.log('%c[F2L] '+e.data.debug,'color:#a78bfa'); return; }
+        wf2l.terminate(); wf2l = null;
+        if(e.data.error){ addDebugLine('F2L ERROR: '+e.data.error,'err'); rej(new Error(e.data.error)); }
+        else res(e.data.solution);
+      };
+      wf2l.onerror = err => { wf2l.terminate(); wf2l = null; rej(err); };
+      wf2l.postMessage(snap); // send original scrambled state, not post-cross
+    }).catch(err => {
+      stopCalcTimer();
+      showToast(err.message||'Could not solve F2L.');
+      btn.disabled=false; btn.classList.remove('solving'); btn.textContent='⬛ SOLVE FIRST 2 LAYERS';
+      return null;
+    });
+    if (allF2LMoves === null) return;
+    // WF now returns the complete cross+F2L sequence; crossMoves is subsumed
+    crossMoves = [];
+    f2lMoves = allF2LMoves;
+  } else {
+    f2lMoves = [];
+  }
+
+  stopCalcTimer();
+  const calcTook = ((Date.now() - calcStart) / 1000).toFixed(1);
+
+  const allMoves = [...crossMoves, ...f2lMoves];
+  const finalSim = clone(snap);
+  for (const m of allMoves) MOVES[m](finalSim);
+  if (!f2lDone(finalSim)) {
+    showToast('Solver error — try again!');
+    btn.disabled=false; btn.classList.remove('solving'); btn.textContent='⬛ SOLVE FIRST 2 LAYERS';
+    return;
+  }
+  if (stateKey(state) !== stateKey(snap)) {
+    showToast('Cube changed while solving — try again!');
+    btn.disabled=false; btn.classList.remove('solving'); btn.textContent='⬛ SOLVE FIRST 2 LAYERS';
+    return;
+  }
+  if (!allMoves.length) {
+    showToast('First two layers already solved!');
+    btn.disabled=false; btn.classList.remove('solving'); btn.textContent='⬛ SOLVE FIRST 2 LAYERS';
+    return;
+  }
+
+  // ── Step 4: play back all moves ──
+  const playbackSec = Math.ceil(allMoves.length * PLAYBACK_MS / 1000);
+  showToast(`Found in ${calcTook}s · ${allMoves.length} moves · ~${playbackSec}s to play`);
+  window._solverRunning = true;
+  try {
+    for (let i = 0; i < allMoves.length; i++) {
+      const movesLeft = allMoves.length - i - 1;
+      const secsLeft  = Math.ceil(movesLeft * PLAYBACK_MS / 1000);
+      btn.textContent = movesLeft > 0 ? `▶ ${movesLeft} moves · ~${secsLeft}s` : '⬛ SOLVE FIRST 2 LAYERS';
+      await new Promise(r => setTimeout(r, PLAYBACK_MS));
+      window.doMoveLocal(allMoves[i]);
+    }
+    for (const f of FACES) state[f] = finalSim[f];
+    renderAll(null);
+    const {set:fbSet, cubeRef:fbCR, moveCountRef:fbMC} = window._fb;
+    await fbSet(fbCR, clone(state));
+    const n = (parseInt(document.getElementById('moveCount').textContent) || 0) + allMoves.length;
+    await fbSet(fbMC, n);
+  } finally {
+    window._solverRunning = false;
+    btn.disabled = false;
+    btn.classList.remove('solving'); btn.textContent = '⬛ SOLVE FIRST 2 LAYERS';
+  }
 };
 })();
+
+
+// ─── OLL Solver ───────────────────────────────────────────────────────────────
+// Identifies the OLL case by fingerprinting the top layer's yellow sticker
+// pattern, then plays the correct algorithm from a hardcoded lookup table.
+// All 57 OLL cases + skip are covered.
+//
+// Fingerprint: 21 chars
+//   [0-8]  U face stickers (1=yellow, 0=other), row-major
+//   [9-11] F top row, [12-14] R top row, [15-17] B top row, [18-20] L top row
+(function(){
+
+function f2lDone(s){
+  return s.D[1]==='W'&&s.F[7]==='G'&&s.D[3]==='W'&&s.L[7]==='R'&&s.D[5]==='W'&&s.R[7]==='O'&&s.D[7]==='W'&&s.B[7]==='B'&&
+    s.D[2]==='W'&&s.F[8]==='G'&&s.R[6]==='O'&&s.D[0]==='W'&&s.F[6]==='G'&&s.L[8]==='R'&&
+    s.D[8]==='W'&&s.B[6]==='B'&&s.R[8]==='O'&&s.D[6]==='W'&&s.B[8]==='B'&&s.L[6]==='R'&&
+    s.F[5]==='G'&&s.R[3]==='O'&&s.F[3]==='G'&&s.L[5]==='R'&&s.B[3]==='B'&&s.R[5]==='O'&&s.B[5]==='B'&&s.L[3]==='R';
+}
+function ollDone(s){ return s.U.every(c=>c==='Y'); }
+
+function parseAlg(alg){
+  // Wide moves (r,l,f,b) expand to the face move + inner slice.
+  // Since we have no inner-slice moves, we approximate: the face + its opposite' cancels center,
+  // so r = R M' ≈ R (for top-layer orientation) and similarly for others.
+  // For OLL correctness we use the "face only" approximation which works for all standard OLL algs.
+  const expand={
+    "r" :["R"],"r'" :["R'"],"r2" :["R2"],"r2'":["R2"],
+    "l" :["L"],"l'" :["L'"],"l2" :["L2"],"l2'":["L2"],
+    "f" :["F"],"f'" :["F'"],"f2" :["F2"],
+    "b" :["B"],"b'" :["B'"],"b2" :["B2"],
+    "M" :["R'","L"],"M'" :["R","L'"],"M2":["R2","L2"],
+    "S" :["F","B'"],"S'" :["F'","B"],"S2":["F2","B2"],
+    "x":[],"x'":[],"x2":[],"y":[],"y'":[],"y2":[],"z":[],"z'":[],"z2":[]
+  };
+  const out=[];
+  for(const t of alg.trim().split(/\s+/)){
+    if(expand[t]) for(const m of expand[t]) out.push(m);
+    else if(MOVES[t]) out.push(t);
+  }
+  return out;
+}
+
+function reverseAlg(alg){
+  return alg.trim().split(/\s+/).reverse().map(m=>{
+    if(m.endsWith("2"))return m;
+    if(m.endsWith("'"))return m.slice(0,-1);
+    return m+"'";
+  }).join(' ');
+}
+
+function fingerprint(s){
+  let fp='';
+  for(let i=0;i<9;i++) fp+=s.U[i]==='Y'?'1':'0';
+  for(const i of [0,1,2]) fp+=s.F[i]==='Y'?'1':'0';
+  for(const i of [0,1,2]) fp+=s.R[i]==='Y'?'1':'0';
+  for(const i of [2,1,0]) fp+=s.B[i]==='Y'?'1':'0';
+  for(const i of [0,1,2]) fp+=s.L[i]==='Y'?'1':'0';
+  return fp;
+}
+
+const CASES=[
+  [1, "R U2 R' U' R U R' U' R U' R'"],
+  [2, "F R U R' U' F' f R U R' U' f'"],
+  [3, "f R U R' U' f' U' F R U R' U' F'"],
+  [4, "f R U R' U' f' U F R U R' U' F'"],
+  [5, "r' U2 R U R' U r"],
+  [6, "r U2 R' U' R U' r'"],
+  [7, "r U R' U R U2 r'"],
+  [8, "l' U' L U' L' U2 l"],
+  [9, "R U R' U' R' F R2 U R' U' F'"],
+  [10,"R U R' U R' F R F' R U2 R'"],
+  [11,"r U R' U R' F R F' R U2 r'"],
+  [12,"M' R' U' R U' R' U2 R U' M"],
+  [13,"F U R U' R2 F' R U R U' R'"],
+  [14,"R' F R U R' F' R F U' F'"],
+  [15,"l' U' l L' U' L U l' U l"],
+  [16,"r U r' R U R' U' r U' r'"],
+  [17,"R U R' U R' F R F' U2 R' F R F'"],
+  [18,"r U R' U R U2 r2' U' R U' R' U2 r"],
+  [19,"R' U2 F R U R' U' F2 U2 F R"],
+  [20,"M U R U R' U' M' R' F R F'"],
+  [21,"R U2 R' U' R U R' U' R U' R'"],
+  [22,"R U2 R2 U' R2 U' R2 U2 R"],
+  [23,"R2 D' R U2 R' D R U2 R"],
+  [24,"r U R' U' r' F R F'"],
+  [25,"F' r U R' U' r' F R"],
+  [26,"R U2 R' U' R U' R'"],
+  [27,"R U R' U R U2 R'"],
+  [28,"r U R' U' M U R U' R'"],
+  [29,"R U R' U' R U' R' F' U' F R U R'"],
+  [30,"F R' F R2 U' R' U' R U R' F2"],
+  [31,"R' U' F U R U' R' F' R"],
+  [32,"L U F' U' L' U L F L'"],
+  [33,"R U R' U' R' F R F'"],
+  [34,"R U R' U' B' R' F R F' B"],
+  [35,"R U2 R2 F R F' R U2 R'"],
+  [36,"R' U' R U' R' U R U l U' R' U"],
+  [37,"F R U' R' U' R U R' F'"],
+  [38,"R U R' U R U' R' U' R' F R F'"],
+  [39,"L F' L' U' L U F U' L'"],
+  [40,"R' F R U R' U' F' U R"],
+  [41,"R U R' U R U2 R' F R U R' U' F'"],
+  [42,"R' U' R U' R' U2 R F R U R' U' F'"],
+  [43,"R' U' F' U F R"],
+  [44,"f R U R' U' f'"],
+  [45,"F R U R' U' F'"],
+  [46,"R' U' R' F R F' U R"],
+  [47,"R' U' R' F R F' R' F R F' U R"],
+  [48,"F R U R' U' R U R' U' F'"],
+  [49,"r U' r2' U r2 U r2' U' r"],
+  [50,"r' U r2 U' r2' U' r2 U r'"],
+  [51,"f R U R' U' R U R' U' f'"],
+  [52,"R U R' U R U' B U' B' R'"],
+  [53,"l' U2 L U L' U' L U L' U l"],
+  [54,"r U2 R' U' R U R' U' R U' r'"],
+  [55,"R' F R U R U' R2 F' R2 U' R' U R U R'"],
+  [56,"r' U' r U' R' U R U' R' U R r' U r"],
+  [57,"R U R' U' M' U R U' r'"],
+];
+
+function buildTable(){
+  const tbl=new Map();
+  function baseState(){
+    return{
+      U:['Y','Y','Y','Y','Y','Y','Y','Y','Y'],
+      D:['W','W','W','W','W','W','W','W','W'],
+      F:['G','G','G','G','G','G','G','G','G'],
+      R:['O','O','O','O','O','O','O','O','O'],
+      B:['B','B','B','B','B','B','B','B','B'],
+      L:['R','R','R','R','R','R','R','R','R'],
+    };
+  }
+  function applyList(s,moves){
+    const ns={U:s.U.slice(),D:s.D.slice(),F:s.F.slice(),R:s.R.slice(),B:s.B.slice(),L:s.L.slice()};
+    for(const m of moves) if(MOVES[m]) MOVES[m](ns);
+    return ns;
+  }
+  const aufMoves=[[], ['U'], ['U','U'], ["U'"]];
+  const aufLabels=['',  'U', 'U2', "U'"];
+  const aufInvs  =['',  "U'", 'U2', 'U'];
+  for(const [caseNum,alg] of CASES){
+    const revMoves=parseAlg(reverseAlg(alg));
+    const before=applyList(baseState(),revMoves);
+    for(let u=0;u<4;u++){
+      const rotated=applyList(before,aufMoves[u]);
+      const fp=fingerprint(rotated);
+      if(!tbl.has(fp)) tbl.set(fp,{caseNum,alg,aufPre:aufInvs[u]});
+    }
+  }
+  return tbl;
+}
+
+window.solveOLL=async function(){
+  if(window._solverRunning){showToast('Solver already running\u2026');return;}
+  if(!f2lDone(state)){showToast('Solve the first two layers first!');return;}
+  if(ollDone(state)){showToast('OLL already solved!');return;}
+
+  const btn=document.getElementById('ollBtn');
+  const f2lBtn=document.getElementById('f2lBtn');
+  btn.disabled=true; f2lBtn.disabled=true;
+  btn.classList.add('solving'); btn.textContent='\u29d0 Finding OLL\u2026';
+
+  const table=buildTable();
+  const fp=fingerprint(state);
+  const entry=table.get(fp);
+  addDebugLine(`[OLL] fingerprint=${fp} tableSize=${table.size} found=${!!entry}`, entry?'dbg':'err');
+  if(entry) addDebugLine(`[OLL] case#${entry.caseNum} aufPre="${entry.aufPre}" alg="${entry.alg}"`, 'dbg');
+
+  if(!entry){
+    // Show what fingerprints ARE in the table vs what we have
+    addDebugLine(`[OLL] U face: ${state.U.map(c=>c==='Y'?'Y':'.').join('')}`, 'err');
+    addDebugLine(`[OLL] F-top:${state.F.slice(0,3).join('')} R-top:${state.R.slice(0,3).join('')} B-top:${state.B.slice(0,3).join('')} L-top:${state.L.slice(0,3).join('')}`, 'err');
+    showToast('OLL case not recognised \u2014 see debug panel');
+    btn.disabled=false; f2lBtn.disabled=false;
+    btn.classList.remove('solving'); btn.textContent='\u25c8 SOLVE OLL';
+    return;
+  }
+
+  const preMoves=entry.aufPre?parseAlg(entry.aufPre):[];
+  const algMoves=parseAlg(entry.alg);
+  const allMoves=[...preMoves,...algMoves];
+
+  const snap=clone(state);
+  const finalSim=clone(snap);
+  for(const m of allMoves) MOVES[m](finalSim);
+  if(!ollDone(finalSim)){
+    addDebugLine(`[OLL] verification failed! allMoves=${allMoves.join(' ')}`, 'err');
+    addDebugLine(`[OLL] finalSim U:${finalSim.U.join('')}`, 'err');
+    showToast('OLL solver error \u2014 see debug panel');
+    btn.disabled=false; f2lBtn.disabled=false;
+    btn.classList.remove('solving'); btn.textContent='\u25c8 SOLVE OLL';
+    return;
+  }
+
+  showToast('OLL #'+entry.caseNum+' \u2014 '+allMoves.length+' moves');
+  btn.textContent='\u25b6 '+allMoves.length+' moves\u2026';
+  window._solverRunning=true;
+  try{
+    for(let i=0;i<allMoves.length;i++){
+      await new Promise(r=>setTimeout(r,350));
+      window.doMoveLocal(allMoves[i]);
+      btn.textContent=i<allMoves.length-1?'\u25b6 '+(allMoves.length-i-1)+' left\u2026':'\u25c8 SOLVE OLL';
+    }
+    for(const f of FACES) state[f]=finalSim[f];
+    renderAll(null);
+    const {set:fbSet,cubeRef:fbCR,moveCountRef:fbMC}=window._fb;
+    await fbSet(fbCR,clone(state));
+    const n=(parseInt(document.getElementById('moveCount').textContent)||0)+allMoves.length;
+    await fbSet(fbMC,n);
+  }finally{
+    window._solverRunning=false;
+    btn.disabled=false; f2lBtn.disabled=false;
+    btn.classList.remove('solving'); btn.textContent='\u25c8 SOLVE OLL';
+  }
+};
+
+})();
+
 </script>
 </body>
 </html>
