@@ -9338,9 +9338,14 @@ async function _adminWipeFirestore(btn, progEl, errEl) {
   try {
     progEl.textContent = 'Listing collections…';
 
-    // List all top-level collections
-    const colls = await db.listCollections();
-    const collIds = colls.map(c => c.id);
+    // Hardcoded top-level collections (db.listCollections() is Admin SDK only)
+    const collIds = [
+      'userProfiles', 'usernames', 'users', 'friends', 'friendRequests',
+      'directMessages', 'userConvs', 'blocked', 'reports',
+      'groupChats', 'userGroups', 'groupInviteCodes',
+      'projectShares', 'projectShareCodes', 'projectInvites',
+      'sharedProjects', 'projectPresence'
+    ];
 
     if (!collIds.length) {
       progEl.textContent = 'Database is already empty.';
