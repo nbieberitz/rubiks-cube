@@ -6,10 +6,24 @@
 <title>Rubik's Cube — Live Multiplayer</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
 
+<!-- ─── Firebase init + anonymous auth ──────────────────────────────────────
+     signInAnonymously() fires silently on first load — no login screen.
+     window._fb is populated only after auth resolves; the game logic module
+     polls for it via waitForFB() before attaching any listeners.
+     Presence writes (own UID only) are the one thing still done client-side;
+     RTDB rules explicitly allow auth.uid === $uid writes to cube/presence/$uid.
+     Everything else (makeMove, resetCube, scrambleCube) goes through Cloud
+     Functions which use the Admin SDK and bypass RTDB rules entirely.
+─────────────────────────────────────────────────────────────────────────── -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { initializeApp }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, set, onValue, serverTimestamp, onDisconnect }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFunctions, httpsCallable }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
   const firebaseConfig = {
     apiKey:            "AIzaSyCtcmV8TJzXlDywfMX6hSFnlaTM5QrLdsU",
@@ -21,30 +35,53 @@
     appId:             "1:710255457068:web:dca388111672110e7c7289"
   };
 
-  const app = initializeApp(firebaseConfig);
-  const db  = getDatabase(app);
+  const app  = initializeApp(firebaseConfig);
+  const db   = getDatabase(app);
+  const auth = getAuth(app);
+  const fns  = getFunctions(app);
 
-  const AVATARS = ['🟥','🟦','🟩','🟨','🟧','🟪','⬛','🤍'];
-  let myId = sessionStorage.getItem('rubik_id') || Math.random().toString(36).slice(2,9);
-  sessionStorage.setItem('rubik_id', myId);
-
-  const cubeRef     = ref(db, 'cube/state');
-  const moveCountRef= ref(db, 'cube/moveCount');
-  const presenceRef = ref(db, `cube/presence/${myId}`);
+  const AVATARS    = ['🟥','🟦','🟩','🟨','🟧','🟪','⬛','🤍'];
   const presenceAll = ref(db, 'cube/presence');
-  const recentRef   = ref(db, 'cube/recentMoves');
 
-  let myAvatar = '⬜';
-  const snap0 = await new Promise(r => onValue(presenceAll, r, {onlyOnce:true}));
-  const taken = new Set(snap0.exists() ? Object.values(snap0.val()).map(u=>u.avatar) : []);
-  const free  = AVATARS.filter(a=>!taken.has(a));
-  myAvatar = free.length ? free[Math.floor(Math.random()*free.length)]
-                         : AVATARS[Math.floor(Math.random()*AVATARS.length)];
+  onAuthStateChanged(auth, async user => {
+    if (!user) {
+      // First visit — sign in silently. onAuthStateChanged fires again with the user.
+      await signInAnonymously(auth);
+      return;
+    }
 
-  set(presenceRef, {avatar:myAvatar, t:serverTimestamp()});
-  onDisconnect(presenceRef).remove();
+    const myId = user.uid;   // always from auth, never from request.data
 
-  window._fb = {db,ref,set,onValue,cubeRef,moveCountRef,presenceAll,recentRef,myId,myAvatar};
+    // Pick an avatar colour not already taken by another live user
+    const snap0 = await new Promise(r => onValue(presenceAll, r, { onlyOnce: true }));
+    const taken  = new Set(snap0.exists() ? Object.values(snap0.val()).map(u => u.avatar) : []);
+    const free   = AVATARS.filter(a => !taken.has(a));
+    const myAvatar = free.length
+      ? free[Math.floor(Math.random() * free.length)]
+      : AVATARS[Math.floor(Math.random() * AVATARS.length)];
+
+    // Presence is the one write that stays client-side.
+    // RTDB rules: "cube/presence/$uid" writeable only when auth.uid === $uid.
+    const presenceRef = ref(db, `cube/presence/${myId}`);
+    set(presenceRef, { avatar: myAvatar, t: serverTimestamp() });
+    onDisconnect(presenceRef).remove();
+
+    // Expose everything the game logic module needs.
+    // Note: no set() — all cube writes go through Cloud Functions below.
+    window._fb = {
+      db, ref, onValue,
+      myId,
+      myAvatar,
+      presenceAll,
+      cubeRef:      ref(db, 'cube/state'),
+      moveCountRef: ref(db, 'cube/moveCount'),
+      recentRef:    ref(db, 'cube/recentMoves'),
+      // Cloud Function callables
+      makeMove:         httpsCallable(fns, 'makeMove'),
+      resetCubeFunc:    httpsCallable(fns, 'resetCube'),
+      scrambleCubeFunc: httpsCallable(fns, 'scrambleCube'),
+    };
+  });
 </script>
 
 <style>
@@ -253,7 +290,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 <div class="overlay" id="overlay">
   <div class="overlay-icon">⧖</div>
   <div class="overlay-text">CONNECTING…</div>
-  <div class="overlay-sub">Connecting to Firebase real-time database.</div>
+  <div class="overlay-sub">Signing in and connecting to Firebase.</div>
 </div>
 
 <div class="app">
@@ -334,21 +371,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 
 <script type="module">
 // ─── Firebase wait ───────────────────────────────────────────────────────────
-function waitForFB(cb, n=0) {
+// Polls until the auth module has signed in and populated window._fb.
+function waitForFB(cb, n = 0) {
   if (window._fb) return cb(window._fb);
-  if (n > 50) return;
-  setTimeout(() => waitForFB(cb, n+1), 100);
+  if (n > 100) return;   // 10-second timeout
+  setTimeout(() => waitForFB(cb, n + 1), 100);
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
-const COLORS = {W:'#f0f0f0',Y:'#ffd600',G:'#00b518',B:'#1565ff',O:'#ff7200',R:'#e00000'};
+const COLORS = { W:'#f0f0f0', Y:'#ffd600', G:'#00b518', B:'#1565ff', O:'#ff7200', R:'#e00000' };
 const FACES  = ['U','D','F','B','L','R'];
 const SOLVED = {
-  U:Array(9).fill('Y'), D:Array(9).fill('W'), F:Array(9).fill('G'),
-  B:Array(9).fill('B'), L:Array(9).fill('R'), R:Array(9).fill('O')
+  U: Array(9).fill('Y'), D: Array(9).fill('W'), F: Array(9).fill('G'),
+  B: Array(9).fill('B'), L: Array(9).fill('R'), R: Array(9).fill('O')
 };
 let state = {};
-function clone(s) { const c={}; for (const k in s) c[k]=[...s[k]]; return c; }
+function clone(s) { const c = {}; for (const k in s) c[k] = [...s[k]]; return c; }
 
 // ─── Move functions ──────────────────────────────────────────────────────────
 function cw(f) { return [f[6],f[3],f[0],f[7],f[4],f[1],f[8],f[5],f[2]]; }
@@ -403,33 +441,29 @@ function L_cw(s) {
 }
 
 const MOVES = {
-  'U':  s => U_cw(s),
-  "U'": s => { U_cw(s); U_cw(s); U_cw(s); },
-  'U2': s => { U_cw(s); U_cw(s); },
-  'D':  s => { D_cw(s); D_cw(s); D_cw(s); },
-  "D'": s => D_cw(s),
-  'D2': s => { D_cw(s); D_cw(s); },
-  'F':  s => F_cw(s),
-  "F'": s => { F_cw(s); F_cw(s); F_cw(s); },
-  'F2': s => { F_cw(s); F_cw(s); },
-  'B':  s => B_cw(s),
-  "B'": s => { B_cw(s); B_cw(s); B_cw(s); },
-  'B2': s => { B_cw(s); B_cw(s); },
-  'R':  s => R_cw(s),
-  "R'": s => { R_cw(s); R_cw(s); R_cw(s); },
-  'R2': s => { R_cw(s); R_cw(s); },
-  'L':  s => L_cw(s),
-  "L'": s => { L_cw(s); L_cw(s); L_cw(s); },
-  'L2': s => { L_cw(s); L_cw(s); },
+  'U':   s => U_cw(s),
+  "U'":  s => { U_cw(s); U_cw(s); U_cw(s); },
+  'U2':  s => { U_cw(s); U_cw(s); },
+  'D':   s => { D_cw(s); D_cw(s); D_cw(s); },
+  "D'":  s => D_cw(s),
+  'D2':  s => { D_cw(s); D_cw(s); },
+  'F':   s => F_cw(s),
+  "F'":  s => { F_cw(s); F_cw(s); F_cw(s); },
+  'F2':  s => { F_cw(s); F_cw(s); },
+  'B':   s => B_cw(s),
+  "B'":  s => { B_cw(s); B_cw(s); B_cw(s); },
+  'B2':  s => { B_cw(s); B_cw(s); },
+  'R':   s => R_cw(s),
+  "R'":  s => { R_cw(s); R_cw(s); R_cw(s); },
+  'R2':  s => { R_cw(s); R_cw(s); },
+  'L':   s => L_cw(s),
+  "L'":  s => { L_cw(s); L_cw(s); L_cw(s); },
+  'L2':  s => { L_cw(s); L_cw(s); },
 };
 
 function isSolved() { return FACES.every(f => state[f].every(c => c === state[f][0])); }
 
 // ─── Rendering ───────────────────────────────────────────────────────────────
-//
-// face-B: scaleX(-1) on the same transform element cancels the rotateY(180deg) H-mirror.
-// Works in Chrome, Firefox, Edge. Stickers inserted in normal state order 0-8.
-
 function buildFace(faceName) {
   const el = document.getElementById(`face-${faceName}`);
   el.innerHTML = '';
@@ -468,8 +502,8 @@ function addLog(move, avatar, isMe) {
   const log = document.getElementById('moveLog');
   const e = document.createElement('div');
   e.className = 'log-entry' + (isMe ? ' mine' : '');
-  e.innerHTML = `<span class="log-avatar">${avatar}</span>`+
-    `<span class="log-move">${move}</span>`+
+  e.innerHTML = `<span class="log-avatar">${avatar}</span>` +
+    `<span class="log-move">${move}</span>` +
     (isMe ? '<span class="log-you">you</span>' : '');
   log.prepend(e);
   while (log.children.length > 30) log.removeChild(log.lastChild);
@@ -483,29 +517,31 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-// ─── Firebase ────────────────────────────────────────────────────────────────
+// ─── Firebase listeners + game actions ───────────────────────────────────────
 waitForFB(fb => {
-  const {db,ref,set,onValue,cubeRef,moveCountRef,presenceAll,recentRef,myId,myAvatar} = fb;
+  const { onValue, cubeRef, moveCountRef, presenceAll, recentRef, myId, myAvatar,
+          makeMove, resetCubeFunc, scrambleCubeFunc } = fb;
 
   document.getElementById('myBadge').textContent = `You: ${myAvatar}`;
   document.getElementById('overlay').classList.add('hidden');
 
+  // Online count
   onValue(presenceAll, snap => {
     document.getElementById('onlineCount').textContent =
       snap.exists() ? Object.keys(snap.val()).length : 0;
   });
 
+  // Cube state — read-only from RTDB; writes come back here after Cloud Function runs
   let firstLoad = true;
   onValue(cubeRef, snap => {
     if (!snap.exists()) {
       state = clone(SOLVED);
-      set(cubeRef, state);
       renderAll(null);
       firstLoad = false;
       return;
     }
     const remote = snap.val();
-    const prev = firstLoad ? null : clone(state);
+    const prev   = firstLoad ? null : clone(state);
     for (const f of FACES) {
       state[f] = remote[f]
         ? (Array.isArray(remote[f]) ? remote[f] : Object.values(remote[f]))
@@ -515,25 +551,36 @@ waitForFB(fb => {
     firstLoad = false;
   });
 
+  // Move counter
   onValue(moveCountRef, snap => {
     document.getElementById('moveCount').textContent = snap.exists() ? snap.val() : 0;
   });
 
+  // Move log — clears itself automatically when recentMoves is wiped on reset
   let knownKeys = new Set(), logReady = false;
   onValue(recentRef, snap => {
-    if (!snap.exists()) return;
+    if (!snap.exists()) {
+      // resetCube() set recentMoves to null — clear the log
+      document.getElementById('moveLog').innerHTML = '';
+      knownKeys.clear();
+      logReady = false;
+      return;
+    }
     const entries = snap.val();
     if (!logReady) {
-      Object.entries(entries).sort((a,b)=>a[1].t-b[1].t).slice(-10).reverse()
-        .forEach(([k,e])=>{ knownKeys.add(k); addLog(e.m,e.av,e.id===myId); });
+      Object.entries(entries).sort((a, b) => a[1].t - b[1].t).slice(-10).reverse()
+        .forEach(([k, e]) => { knownKeys.add(k); addLog(e.m, e.av, e.id === myId); });
       logReady = true;
     } else {
-      Object.entries(entries).filter(([k])=>!knownKeys.has(k))
-        .sort((a,b)=>a[1].t-b[1].t)
-        .forEach(([k,e])=>{ knownKeys.add(k); if(e.id!==myId) addLog(e.m,e.av,false); });
+      Object.entries(entries).filter(([k]) => !knownKeys.has(k))
+        .sort((a, b) => a[1].t - b[1].t)
+        .forEach(([k, e]) => { knownKeys.add(k); if (e.id !== myId) addLog(e.m, e.av, false); });
     }
   });
 
+  // ── doMove ─────────────────────────────────────────────────────────────────
+  // Optimistic local render for instant feedback, then the Cloud Function
+  // applies the move server-side and writes back — onValue syncs the result.
   window.doMove = async function(moveName) {
     const prev = clone(state);
     MOVES[moveName](state);
@@ -544,41 +591,38 @@ waitForFB(fb => {
     lm.classList.remove('fade'); void lm.offsetWidth; lm.classList.add('fade');
     addLog(moveName, myAvatar, true);
 
-    await set(cubeRef, clone(state));
-    const n = (parseInt(document.getElementById('moveCount').textContent)||0) + 1;
-    await set(moveCountRef, n);
-    const key = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    await set(ref(db,`cube/recentMoves/${key}`), {m:moveName,av:myAvatar,id:myId,t:Date.now()});
+    await makeMove({ moveName, avatar: myAvatar }).catch(err => {
+      showToast('Move failed — ' + (err.message || 'try again'));
+    });
   };
 
+  // ── resetCube ──────────────────────────────────────────────────────────────
   window.resetCube = async function() {
     if (!confirm('Reset cube for everyone?')) return;
-    state = clone(SOLVED);
-    renderAll(null);
-    await set(cubeRef, clone(state));
-    await set(moveCountRef, 0);
-    await set(ref(db,'cube/recentMoves'), null);
     document.getElementById('lastMove').textContent = '—';
-    document.getElementById('moveLog').innerHTML = '';
+    await resetCubeFunc({}).catch(err => {
+      showToast('Reset failed — ' + (err.message || 'try again'));
+    });
+    // Move log is cleared by the onValue(recentRef) listener when null arrives
     showToast('Cube reset for all players!');
   };
 
+  // ── scrambleCube ───────────────────────────────────────────────────────────
   window.scrambleCube = async function() {
-    const keys = Object.keys(MOVES);
-    const n = 20 + Math.floor(Math.random()*8);
-    const sc = clone(state);
-    for (let i=0; i<n; i++) MOVES[keys[Math.floor(Math.random()*keys.length)]](sc);
-    await set(cubeRef, sc);
-    await set(moveCountRef, (parseInt(document.getElementById('moveCount').textContent)||0) + n);
-    showToast(`Scrambled with ${n} moves!`);
+    const result = await scrambleCubeFunc({}).catch(err => {
+      showToast('Scramble failed — ' + (err.message || 'try again'));
+      return null;
+    });
+    if (result) showToast(`Scrambled with ${result.data.moves} moves!`);
   };
 
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
-    const k = e.key.toUpperCase();
-    const map = {U:'U',D:'D',F:'F',B:'B',R:'R',L:'L'};
+    const k   = e.key.toUpperCase();
+    const map = { U:'U', D:'D', F:'F', B:'B', R:'R', L:'L' };
     if (map[k]) { e.preventDefault(); doMove(e.shiftKey ? `${map[k]}'` : map[k]); }
-    if (e.key === ' ') { e.preventDefault(); scrambleCube(); }
+    if (e.key === ' ')      { e.preventDefault(); scrambleCube(); }
     if (e.key === 'Escape') resetCube();
   });
 });
@@ -606,7 +650,7 @@ waitForFB(fb => {
   apply();
 })();
 
-// ─── Solver (CFOP) ────────────────────────────────────────────────────────────
+// ─── Solver (CFOP / IDA*) ────────────────────────────────────────────────────
 (function(){
 const W=`
 const FACES=['U','D','F','B','L','R'];
@@ -629,36 +673,40 @@ function ida(s,g,b,p,lf){if(Date.now()>_d)return 9999;const f=g+h(s);if(f>b)retu
 function idaSolve(s,ms){_s=null;_d=Date.now()+ms;if(solved(s))return[];let b=h(s);while(b<=30){const t=ida(s,0,b,[],-1);if(t===-1)return _s;if(t===9999)return null;b=t===b?b+1:t;}return null;}
 function greedyRetry(s,attempts,maxIter){for(let a=0;a<attempts;a++){const mv=[];let cur=clone(s),stuck=0;for(let i=0;i<maxIter;i++){if(solved(cur))return mv;let bM=null,bH=h(cur);for(const m of AM){const hv=h(ap(cur,m));if(hv<bH){bH=hv;bM=m;}}if(bM){mv.push(bM);cur=ap(cur,bM);stuck=0;}else{stuck++;const nr=stuck>10?5:1;for(let r=0;r<nr;r++){const rm=AM[Math.floor(Math.random()*AM.length)];mv.push(rm);cur=ap(cur,rm);}}}if(solved(cur))return mv;}return null;}
 self.onmessage=function(e){const s=e.data;if(solved(s)){self.postMessage({solution:[]});return;}const sol=idaSolve(s,12000);if(sol!==null){self.postMessage({solution:sol});return;}const g=greedyRetry(s,200,30000);if(g!==null){self.postMessage({solution:g});return;}self.postMessage({error:'Could not solve.'});};
-
 `;
-let worker=null;
+let worker = null;
 window.solveCube = async function() {
   if (isSolved()) { showToast('Already solved!'); return; }
   const btn = document.getElementById('solveBtn');
-  btn.disabled=true; btn.classList.add('solving'); btn.textContent='⏳ Solving…';
+  btn.disabled = true; btn.classList.add('solving'); btn.textContent = '⏳ Solving…';
   showToast('Calculating…');
-  if (worker) { worker.terminate(); worker=null; }
-  worker = new Worker(URL.createObjectURL(new Blob([W],{type:'application/javascript'})));
+  if (worker) { worker.terminate(); worker = null; }
+  worker = new Worker(URL.createObjectURL(new Blob([W], { type:'application/javascript' })));
   const snap = clone(state);
-  const sol = await new Promise((res,rej)=>{
-    worker.onmessage = e => { worker.terminate(); worker=null;
+  const sol = await new Promise((res, rej) => {
+    worker.onmessage = e => { worker.terminate(); worker = null;
       e.data.error ? rej(new Error(e.data.error)) : res(e.data.solution); };
-    worker.onerror  = err => { worker.terminate(); worker=null; rej(err); };
+    worker.onerror  = err => { worker.terminate(); worker = null; rej(err); };
     worker.postMessage(snap);
   }).catch(err => {
-    showToast(err.message||'Could not solve.'); btn.disabled=false;
-    btn.classList.remove('solving'); btn.textContent='★ SOLVE'; return null;
+    showToast(err.message || 'Could not solve.');
+    btn.disabled = false; btn.classList.remove('solving'); btn.textContent = '★ SOLVE';
+    return null;
   });
   if (!sol) return;
-  if (!sol.length) { showToast('Already solved!'); btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★ SOLVE'; return; }
+  if (!sol.length) {
+    showToast('Already solved!');
+    btn.disabled = false; btn.classList.remove('solving'); btn.textContent = '★ SOLVE';
+    return;
+  }
   showToast(`Solution: ${sol.length} moves!`);
   btn.textContent = `▶ ${sol.length} moves…`;
-  for (let i=0; i<sol.length; i++) {
-    await new Promise(r=>setTimeout(r,750));
+  for (let i = 0; i < sol.length; i++) {
+    await new Promise(r => setTimeout(r, 750));
     await doMove(sol[i]);
-    btn.textContent = i<sol.length-1 ? `▶ ${sol.length-i-1} left…` : '★ SOLVE';
+    btn.textContent = i < sol.length - 1 ? `▶ ${sol.length - i - 1} left…` : '★ SOLVE';
   }
-  btn.disabled=false; btn.classList.remove('solving'); btn.textContent='★ SOLVE';
+  btn.disabled = false; btn.classList.remove('solving'); btn.textContent = '★ SOLVE';
 };
 })();
 </script>
